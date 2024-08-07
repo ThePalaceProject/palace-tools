@@ -6,8 +6,7 @@ from xml.dom import minidom
 import typer
 import xmltodict
 
-from palace_tools.feeds import axis, opds, overdrive
-from palace_tools.feeds.opds import write_json
+from palace_tools.feeds import axis, opds, opds1, overdrive
 from palace_tools.utils.typer import run_typer_app_as_main
 
 app = typer.Typer()
@@ -102,7 +101,23 @@ def download_opds(
     """Download OPDS 2 feed."""
     publications = opds.fetch(url, username, password, authentication)
     with output_file.open("w") as file:
-        write_json(file, publications)
+        opds.write_json(file, publications)
+
+
+@app.command("opds1")
+def download_opds1(
+    username: str = typer.Option(None, "--username", "-u", help="Username"),
+    password: str = typer.Option(None, "--password", "-p", help="Password"),
+    authentication: opds.AuthType = typer.Option(
+        opds.AuthType.NONE, "--auth", "-a", help="Authentication type"
+    ),
+    url: str = typer.Argument(..., help="URL of feed", metavar="URL"),
+    output_file: Path = typer.Argument(
+        ..., help="Output file", writable=True, file_okay=True, dir_okay=False
+    ),
+) -> None:
+    """Download OPDS 1.x feed."""
+    opds1.fetch(url, username, password, authentication, output_file)
 
 
 def main() -> None:
