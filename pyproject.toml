@@ -34,7 +34,7 @@ python = ">=3.10,<4"
 python-vlc = "^3.0.20123"
 pytz = "^2024.1"
 rich = "^13.7.1"
-textual = "^0.75.1"
+textual = "^0.83.0"
 typer = "^0.12.3"
 typing_extensions = {version = "^4.9.0", python = "<3.11"}
 xmltodict = "^0.13.0"
