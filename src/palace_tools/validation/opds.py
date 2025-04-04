@@ -34,11 +34,22 @@ def validate_opds_feeds(
                 title = metadata_dict.get("title", "<unknown>")
                 authors = metadata_dict.get("author", "<unknown>")
 
+                links = publication_dict.get("links", [])
+                self_url = next(
+                    (
+                        link["href"]
+                        for link in links
+                        if link.get("rel") == "self" and link.get("href") is not None
+                    ),
+                    "<unknown>",
+                )
+
                 errors.append(f"Error validating publication.")
-                errors.append(f"  URL: {url}")
                 errors.append(f"  Identifier: {identifier}")
                 errors.append(f"  Title: {title!r}")
                 errors.append(f"  Author(s): {authors!r}")
+                errors.append(f"  Feed page: {url}")
+                errors.append(f"  Self URL: {self_url}")
                 errors.append(f"  Errors:")
                 errors.append(textwrap.indent(str(e), "    "))
                 errors.append(f"  Publication JSON:")
