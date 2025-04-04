@@ -99,7 +99,12 @@ def download_opds(
     ),
 ) -> None:
     """Download OPDS 2 feed."""
-    publications = opds.fetch(url, username, password, authentication)
+    feeds = opds.fetch(url, username, password, authentication)
+    publications = []
+    for feed in feeds.values():
+        # Convert the feed to a list of publications
+        publications.extend(feed.get("publications", []))
+
     with output_file.open("w") as file:
         opds.write_json(file, publications)
 

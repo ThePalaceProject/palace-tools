@@ -3,7 +3,9 @@ build-backend = "poetry.core.masonry.api"
 requires = ["poetry-core"]
 
 [tool.isort]
+known_palace = ["palace"]
 profile = "black"
+sections = "FUTURE,STDLIB,THIRDPARTY,PALACE,FIRSTPARTY,LOCALFOLDER"
 
 [tool.mypy]
 files = ["src"]
@@ -29,10 +31,11 @@ version = "0"
 [tool.poetry.dependencies]
 httpx = "^0.27.0"
 mutagen = "^1.47.0"
+palace-manager = {git = "https://github.com/ThePalaceProject/circulation.git", branch = "main"}
 pydantic = "^2.6.1"
 python = ">=3.10,<4"
 python-vlc = "^3.0.20123"
-pytz = "^2024.1"
+pytz = "^2025.1"
 rich = "^13.7.1"
 textual = "^0.75.1"
 typer = "^0.12.3"
@@ -54,6 +57,7 @@ fetch-lcp = "palace_tools.cli.fetch_lcp:main"
 palace-terminal = "palace_tools.cli.palace_terminal:main"
 patron-bookshelf = "palace_tools.cli.patron_bookshelf:main"
 validate-audiobook-manifests = "palace_tools.cli.validate_manifests:main"
+validate-feed = "palace_tools.cli.validate_feed:main"
 
 [tool.tomlsort]
 ignore_case = true
