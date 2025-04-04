@@ -1,5 +1,4 @@
 import json
-import logging
 import textwrap
 from typing import Any
 
@@ -12,9 +11,6 @@ def validate_opds_feeds(
     feeds: dict[str, dict[str, Any]], publication_cls: Any
 ) -> list[str]:
     errors = []
-
-    # disable logging, we don't want its output to clutter the validation output
-    logging.disable(logging.ERROR)
     publication_adapter = TypeAdapter(publication_cls)
 
     for url, feed in feeds.items():
