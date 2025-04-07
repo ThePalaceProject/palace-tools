@@ -32,6 +32,11 @@ manifest conforming to the [Audiobook Profile](https://github.com/readium/webpub
         - Download Overdrive feeds.
     - `axis`
         - Download B&T Axis 360 availability feed.
+- `validate-feed` - Validate feeds.
+    - `opds2`
+        - Validate an OPDS2 feed
+    - `opds2-odl`
+        - Validate an OPDS2 + ODL feed
 
 ### Library Support
 

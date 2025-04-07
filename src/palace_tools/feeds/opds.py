@@ -172,7 +172,7 @@ def write_json(file: TextIO, data: list[dict[str, Any]]) -> None:
 
 def fetch(
     url: str, username: str | None, password: str | None, auth_type: AuthType
-) -> list[dict[str, Any]]:
+) -> dict[str, dict[str, Any]]:
     # Create a session to fetch the documents
     client = httpx.Client()
 
@@ -193,7 +193,7 @@ def fetch(
         print("Username and password are required for authentication")
         sys.exit(-1)
 
-    publications = []
+    feeds = {}
 
     # Get the first page
     response = make_request(client, url)
@@ -213,7 +213,7 @@ def fetch(
         download_task = progress.add_task(f"Downloading Feed", total=pages)
         while next_url is not None:
             response = make_request(client, next_url)
-            publications.extend(response["publications"])
+            feeds[next_url] = response
             next_url = None
             for link in response["links"]:
                 if link["rel"] == "next":
@@ -221,4 +221,4 @@ def fetch(
                     break
             progress.update(download_task, advance=1)
 
-    return publications
+    return feeds
