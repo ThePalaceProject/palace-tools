@@ -78,3 +78,7 @@ docs/source/*
 .DS_Store
 
 core/_version.py
+
+# Ignore xml and json files in the root
+/*.json
+/*.xml

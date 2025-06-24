@@ -19,6 +19,9 @@ def download_axis(
     library_id: str = typer.Option(..., "-l", "--library-id", help="Library ID"),
     output_json: bool = typer.Option(False, "-j", "--json", help="Output JSON file"),
     qa_endpoint: bool = typer.Option(False, "-q", "--qa", help="Use QA Endpoint"),
+    no_pretty_print: bool = typer.Option(
+        False, "--no-pretty-print", help="Don't pretty print XML output"
+    ),
     output_file: Path = typer.Argument(
         ..., help="Output file", writable=True, file_okay=True, dir_okay=False
     ),
@@ -36,8 +39,11 @@ def download_axis(
             xml_dict = xmltodict.parse(xml)
             file.write(json.dumps(xml_dict, indent=4))
         else:
-            parsed = minidom.parseString(xml)
-            file.write(parsed.toprettyxml())
+            if not no_pretty_print:
+                # Pretty print the XML
+                parsed = minidom.parseString(xml)
+                xml = parsed.toprettyxml()
+            file.write(xml)
 
 
 @app.command("overdrive")
