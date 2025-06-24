@@ -80,5 +80,6 @@ docs/source/*
 core/_version.py
 
 # Ignore xml and json files in the root
+# Since these are generally feed downloads that we wish to ignore
 /*.json
 /*.xml
