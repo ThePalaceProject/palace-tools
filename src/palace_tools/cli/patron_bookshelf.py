@@ -21,7 +21,7 @@ def main() -> None:
 
 
 def conflicts_with_as_json(
-    ctx: typer.Context, param: typer.Option, value: bool
+    ctx: typer.Context, param: typer.CallbackParam, value: bool
 ) -> bool:
     """Check for conflicts with the `as_json` option.
 
