@@ -9,7 +9,6 @@ from httpx import Response
 from palace_tools.constants import (
     DEFAULT_AUTH_DOC_PATH_SUFFIX,
     DEFAULT_REGISTRY_URL,
-    OPDS_1_TYPE,
     OPDS_2_TYPE,
     PATRON_AUTH_BASIC_TOKEN_TYPE,
     PATRON_AUTH_BASIC_TYPE,
@@ -18,7 +17,7 @@ from palace_tools.models.api.authentication_document import (
     AuthenticationDocument,
     AuthenticationMechanism,
 )
-from palace_tools.models.api.opds2 import OPDS2Feed, match_links
+from palace_tools.models.api.opds2 import match_links
 from palace_tools.models.api.patron_profile import PatronProfileDocument
 from palace_tools.services.registry import LibraryRegistryService
 from palace_tools.utils.http.async_client import HTTPXAsyncClient, validate_response
@@ -58,7 +57,9 @@ class AuthenticatedPatron(PatronAuthorization):
         return PatronProfileDocument.model_validate(profile)
 
     async def fetch_patron_bookshelf(
-        self, accept: str = OPDS_2_TYPE, http_client: HTTPXAsyncClient | None = None,
+        self,
+        accept: str = OPDS_2_TYPE,
+        http_client: HTTPXAsyncClient | None = None,
     ) -> Response:
         [patron_bookshelf_link] = self.authentication_document.patron_bookshelf_links
         headers = dict(self.token.as_http_headers) | {"Accept": accept}

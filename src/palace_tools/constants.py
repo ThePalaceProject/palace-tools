@@ -1,5 +1,12 @@
+import sys
+
+if sys.version_info < (3, 11):
+    from backports.strenum import StrEnum
+else:
+    from enum import StrEnum
+
+
 # Some defaults
-from enum import StrEnum
 
 DEFAULT_ASYNC_TIMEOUT = 30.0
 DEFAULT_AUTH_DOC_PATH_SUFFIX = "authentication_document"

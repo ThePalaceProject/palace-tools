@@ -20,7 +20,9 @@ def main() -> None:
     run_typer_app_as_main(app)
 
 
-def conflicts_with_as_json(ctx: typer.Context, param: typer.Option, value: bool):
+def conflicts_with_as_json(
+    ctx: typer.Context, param: typer.Option, value: bool
+) -> bool:
     """Check for conflicts with the `as_json` option.
 
     Setting the `as_json` option to True is valid only with OPDSv2 feeds and
@@ -135,7 +137,6 @@ def patron_bookshelf(
         print_bookshelf_summary(bookshelf)
 
 
-
 async def fetch_bookshelf(
     *,
     username: str | None = None,
@@ -158,7 +159,9 @@ async def fetch_bookshelf(
             opds_server=opds_server,
             http_client=client,
         )
-        return await patron.fetch_patron_bookshelf(accept=opds.content_type(), http_client=client)
+        return await patron.fetch_patron_bookshelf(
+            accept=opds.content_type(), http_client=client
+        )
 
 
 if __name__ == "__main__":
