@@ -4,6 +4,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum
 
+from httpx import Response
+
 from palace_tools.constants import (
     DEFAULT_AUTH_DOC_PATH_SUFFIX,
     DEFAULT_REGISTRY_URL,
@@ -15,7 +17,7 @@ from palace_tools.models.api.authentication_document import (
     AuthenticationDocument,
     AuthenticationMechanism,
 )
-from palace_tools.models.api.opds2 import OPDS2Feed, match_links
+from palace_tools.models.api.opds2 import match_links
 from palace_tools.models.api.patron_profile import PatronProfileDocument
 from palace_tools.services.registry import LibraryRegistryService
 from palace_tools.utils.http.async_client import HTTPXAsyncClient, validate_response
@@ -54,18 +56,17 @@ class AuthenticatedPatron(PatronAuthorization):
             ).json()
         return PatronProfileDocument.model_validate(profile)
 
-    async def patron_bookshelf(
-        self, http_client: HTTPXAsyncClient | None = None
-    ) -> OPDS2Feed:
+    async def fetch_patron_bookshelf(
+        self,
+        accept: str = OPDS_2_TYPE,
+        http_client: HTTPXAsyncClient | None = None,
+    ) -> Response:
         [patron_bookshelf_link] = self.authentication_document.patron_bookshelf_links
-        headers = dict(self.token.as_http_headers) | {"Accept": OPDS_2_TYPE}
+        headers = dict(self.token.as_http_headers) | {"Accept": accept}
         async with HTTPXAsyncClient.with_existing_client(
             existing_client=http_client
         ) as client:
-            bookshelf = validate_response(
-                await client.get(patron_bookshelf_link.href, headers=headers)
-            ).json()
-        return OPDS2Feed.model_validate(bookshelf)
+            return await client.get(patron_bookshelf_link.href, headers=headers)
 
 
 async def authenticate(
@@ -186,7 +187,7 @@ async def fetch_auth_document(
         existing_client=http_client
     ) as client:
         document = validate_response(await client.get(url)).json()
-    return AuthenticationDocument.parse_obj(document)
+    return AuthenticationDocument.model_validate(document)
 
 
 async def get_auth_document_url(
