@@ -4259,14 +4259,14 @@ files = [
 
 [[package]]
 name = "types-xmltodict"
-version = "0.13.0.3"
+version = "0.15.0.20250907"
 description = "Typing stubs for xmltodict"
 optional = false
-python-versions = "*"
+python-versions = ">=3.9"
 groups = ["dev"]
 files = [
-    {file = "types-xmltodict-0.13.0.3.tar.gz", hash = "sha256:8884534bab0364c4b22d5973f3c8153ff40d413a801d9e70eb893e676909f1fc"},
-    {file = "types_xmltodict-0.13.0.3-py3-none-any.whl", hash = "sha256:cb251c59e838986d8402b10d804225ade9fd6c9f66d01dc45cd6cfdf43640128"},
+    {file = "types_xmltodict-0.15.0.20250907-py3-none-any.whl", hash = "sha256:9a9407b0c46fd2c3b7cb37c39a07333fc22f722bf24292ada9ff393f244e6fc7"},
+    {file = "types_xmltodict-0.15.0.20250907.tar.gz", hash = "sha256:6d800239bd120cabcd6d6880550c54fdeb39759e128c81c0ff5507546c127c2a"},
 ]
 
 [[package]]
@@ -4641,4 +4641,4 @@ files = [
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<4"
-content-hash = "3cd966978bbdc7221c6b43fb5011ea7ed3214ed420f1d6de01445ff14172cecf"
+content-hash = "57a6980a08f2be3da49ba67723ce6d643b27c5b0a3153720b4deb1b5289b3512"
