@@ -100,7 +100,7 @@ def download_overdrive_url(
     ),
     url: str = typer.Argument(..., help="URL to fetch"),
 ) -> None:
-    """Output single Overdrive feed URL (metadata, availability, etc)."""
+    """Output Overdrive feed data by URL (metadata, availability, etc)."""
     results = asyncio.run(overdrive.fetch_url(client_key, client_secret, url))
 
     print(json.dumps(results, indent=4))
