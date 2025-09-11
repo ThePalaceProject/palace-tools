@@ -218,3 +218,26 @@ async def fetch(
                         make_request(client, urls, pending_requests)
 
     return list(products.values())
+
+
+async def fetch_url(
+    client_key: str,
+    client_secret: str,
+    connections: int,
+    url: str,
+) -> Any:
+    async with httpx.AsyncClient(
+        timeout=Timeout(20.0, pool=None),
+        limits=Limits(
+            max_connections=connections,
+            max_keepalive_connections=connections,
+            keepalive_expiry=5,
+        ),
+    ) as client:
+        auth_token = await get_auth_token(client, client_key, client_secret)
+
+        client.headers.update(get_headers(auth_token))
+        response = await client.get(url)
+        handle_error(response)
+
+    return response.json()

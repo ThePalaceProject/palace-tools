@@ -92,6 +92,25 @@ def download_overdrive(
         file.write(json.dumps(products, indent=4))
 
 
+@app.command("overdrive-url")
+def download_overdrive_url(
+    client_key: str = typer.Option(..., "-k", "--client-key", help="Client Key"),
+    client_secret: str = typer.Option(
+        ..., "-s", "--client-secret", help="Client Secret"
+    ),
+    connections: int = typer.Option(
+        20, "-c", "--connections", help="Number of connections to use"
+    ),
+    url: str = typer.Argument(..., help="URL to fetch"),
+) -> None:
+    """Download Overdrive feed."""
+    results = asyncio.run(
+        overdrive.fetch_url(client_key, client_secret, connections, url)
+    )
+
+    print(json.dumps(results, indent=4))
+
+
 @app.command("opds2")
 def download_opds(
     username: str = typer.Option(None, "--username", "-u", help="Username"),
