@@ -15,18 +15,15 @@ app = typer.Typer()
 
 
 def validate(
-    username: str,
-    password: str,
-    authentication: opds.AuthType,
-    url: str,
+    feeds: dict[str, dict[str, Any]],
     output_file: Path | None,
     publication_cls: Any,
+    ignore_errors: list[str],
+    diff: bool,
 ) -> None:
     # disable logging, we don't want its output to clutter the validation output
     logging.disable(logging.ERROR)
-
-    feeds = opds.fetch(url, username, password, authentication)
-    results = validate_opds_feeds(feeds, publication_cls)
+    results = validate_opds_feeds(feeds, publication_cls, ignore_errors, diff)
 
     if results:
         output_str = "\n".join(results)
@@ -45,6 +42,14 @@ def validate_opds2_odl(
     authentication: opds.AuthType = typer.Option(
         opds.AuthType.NONE.value, "--auth", "-a", help="Authentication type"
     ),
+    ignore: list[str] = typer.Option(
+        [],
+        help="Ignore these errors (Can be specified multiple times)",
+        metavar="ERROR",
+    ),
+    diff: bool = typer.Option(
+        False, "--diff", "-d", help="Show a diff between the parsed and original JSON."
+    ),
     url: str = typer.Argument(..., help="URL of feed", metavar="URL"),
     output_file: Path = typer.Argument(
         None,
@@ -56,14 +61,8 @@ def validate_opds2_odl(
     ),
 ) -> None:
     """Validate OPDS 2 + ODL feed."""
-    validate(
-        username,
-        password,
-        authentication,
-        url,
-        output_file,
-        odl.Opds2OrOpds2WithOdlPublication,
-    )
+    feeds = opds.fetch(url, username, password, authentication)
+    validate(feeds, output_file, odl.Opds2OrOpds2WithOdlPublication, ignore, diff)
 
 
 @app.command("opds2")
@@ -72,6 +71,14 @@ def validate_opds2(
     password: str = typer.Option(None, "--password", "-p", help="Password"),
     authentication: opds.AuthType = typer.Option(
         opds.AuthType.NONE.value, "--auth", "-a", help="Authentication type"
+    ),
+    ignore: list[str] = typer.Option(
+        [],
+        help="Ignore these errors (Can be specified multiple times)",
+        metavar="ERROR",
+    ),
+    diff: bool = typer.Option(
+        False, "--diff", "-d", help="Show a diff between the parsed and original JSON."
     ),
     url: str = typer.Argument(..., help="URL of feed", metavar="URL"),
     output_file: Path = typer.Argument(
@@ -84,7 +91,41 @@ def validate_opds2(
     ),
 ) -> None:
     """Validate OPDS 2 feed."""
-    validate(username, password, authentication, url, output_file, opds2.Publication)
+    feeds = opds.fetch(url, username, password, authentication)
+    validate(feeds, output_file, opds2.Publication, ignore, diff)
+
+
+@app.command("opds2-file")
+def validate_opds2_file(
+    ignore: list[str] = typer.Option(
+        [],
+        help="Ignore these errors (Can be specified multiple times)",
+        metavar="ERROR",
+    ),
+    diff: bool = typer.Option(
+        False, "--diff", "-d", help="Show a diff between the parsed and original JSON."
+    ),
+    input_file: Path = typer.Argument(
+        ...,
+        help="File containing the feed to validate",
+        metavar="INPUT_FILE",
+        exists=True,
+        readable=True,
+        file_okay=True,
+        dir_okay=False,
+    ),
+    output_file: Path = typer.Argument(
+        None,
+        help="Output the validation results to a file. If not given, the results will be printed to stdout.",
+        metavar="OUTPUT_FILE",
+        writable=True,
+        file_okay=True,
+        dir_okay=False,
+    ),
+) -> None:
+    """Validate OPDS 2 feed from a file."""
+    feeds = opds.load(input_file)
+    validate(feeds, output_file, opds2.Publication, ignore, diff)
 
 
 def main() -> None:

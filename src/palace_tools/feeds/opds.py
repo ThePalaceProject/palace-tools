@@ -6,6 +6,7 @@ import sys
 from base64 import b64encode
 from collections.abc import Callable, Generator, Mapping
 from enum import Enum
+from pathlib import Path
 from typing import Any, NamedTuple, TextIO
 
 import httpx
@@ -222,3 +223,10 @@ def fetch(
             progress.update(download_task, advance=1)
 
     return feeds
+
+
+def load(input_file: Path) -> dict[str, dict[str, Any]]:
+    with input_file.open("r") as file:
+        url = f"file://{input_file.resolve()}"
+        contents = json.loads(file.read())
+    return {url: contents}
