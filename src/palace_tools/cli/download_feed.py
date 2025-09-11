@@ -98,15 +98,10 @@ def download_overdrive_url(
     client_secret: str = typer.Option(
         ..., "-s", "--client-secret", help="Client Secret"
     ),
-    connections: int = typer.Option(
-        20, "-c", "--connections", help="Number of connections to use"
-    ),
     url: str = typer.Argument(..., help="URL to fetch"),
 ) -> None:
     """Download Overdrive feed."""
-    results = asyncio.run(
-        overdrive.fetch_url(client_key, client_secret, connections, url)
-    )
+    results = asyncio.run(overdrive.fetch_url(client_key, client_secret, url))
 
     print(json.dumps(results, indent=4))
 
