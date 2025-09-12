@@ -133,6 +133,7 @@ async def fetch(
     fetch_metadata: bool,
     fetch_availability: bool,
     connections: int,
+    skip_not_found: bool,
 ) -> list[dict[str, Any]]:
     async with httpx.AsyncClient(
         timeout=Timeout(20.0, pool=None),
@@ -210,10 +211,13 @@ async def fetch(
                             print("Too many retries. Exiting.")
                             sys.exit(-1)
                         else:
-                            print(
-                                f"Retrying request (attempt {retried_requests[request_url]}/3)"
-                            )
-                            urls.appendleft(request_url)
+                            if skip_not_found and ("404 Not Found") in str(e):
+                                print(f'url "{e.request.url}" NOT FOUND. Skipping...')
+                            else:
+                                print(
+                                    f"Retrying request (attempt {retried_requests[request_url]}/3)"
+                                )
+                                urls.appendleft(request_url)
                     if urls:
                         make_request(client, urls, pending_requests)
 
