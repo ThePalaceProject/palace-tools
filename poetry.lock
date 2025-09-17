@@ -4628,17 +4628,20 @@ lxml = ">=3.8"
 
 [[package]]
 name = "xmltodict"
-version = "0.13.0"
+version = "1.0.1"
 description = "Makes working with XML feel like you are working with JSON"
 optional = false
-python-versions = ">=3.4"
+python-versions = ">=3.9"
 groups = ["main"]
 files = [
-    {file = "xmltodict-0.13.0-py2.py3-none-any.whl", hash = "sha256:aa89e8fd76320154a40d19a0df04a4695fb9dc5ba977cbb68ab3e4eb225e7852"},
-    {file = "xmltodict-0.13.0.tar.gz", hash = "sha256:341595a488e3e01a85a9d8911d8912fd922ede5fecc4dce437eb4b6c8d037e56"},
+    {file = "xmltodict-1.0.1-py3-none-any.whl", hash = "sha256:47b370ca0bf049bfad9e12ab27b2bb81c9d4d0ac2f58901810f3acc1c06987a5"},
+    {file = "xmltodict-1.0.1.tar.gz", hash = "sha256:43f06e35e03f0f3ce622b9bd5e9652570a923db2906d5d4b830b76eafcafddcb"},
 ]
+
+[package.extras]
+test = ["pytest", "pytest-cov"]
 
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<4"
-content-hash = "3cd966978bbdc7221c6b43fb5011ea7ed3214ed420f1d6de01445ff14172cecf"
+content-hash = "1ff9823d1f2cc107c1714b4693a6e51e2a607f343e10d057f17e93c417bd1c01"
