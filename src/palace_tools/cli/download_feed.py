@@ -72,6 +72,9 @@ def download_overdrive(
     output_file: Path = typer.Argument(
         ..., help="Output file", writable=True, file_okay=True, dir_okay=False
     ),
+    skip_not_found: bool = typer.Option(
+        False, "-z", "--skip-not-found", help="Skip any urls that are not found (404)"
+    ),
 ) -> None:
     """Download Overdrive feed."""
     base_url = overdrive.QA_BASE_URL if qa_endpoint else overdrive.PROD_BASE_URL
@@ -85,6 +88,7 @@ def download_overdrive(
             fetch_metadata,
             fetch_availability,
             connections,
+            skip_not_found,
         )
     )
 
