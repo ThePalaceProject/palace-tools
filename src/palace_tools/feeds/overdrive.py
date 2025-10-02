@@ -67,7 +67,7 @@ async def get_collection_token(
             accounts = resp.json()["advantageAccounts"]
             for account in accounts:
                 if account["id"] == int(library_id):
-                   return account["collectionToken"]
+                   return str(account["collectionToken"])
 
             print(f"No Advantage account found for library {library_id}")
             sys.exit(-1)
