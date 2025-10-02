@@ -20,6 +20,9 @@ LIBRARY_ENDPOINT = "/v1/libraries/%(library_id)s"
 ADVANTAGE_LIBRARY_ENDPOINT = (
     "/v1/libraries/%(parent_library_id)s/advantageAccounts/%(library_id)s"
 )
+ADVANTAGE_ACCOUNTS_ENDPOINT = (
+    "/v1/libraries/%(parent_library_id)s/advantageAccounts"
+)
 
 
 def handle_error(resp: Response) -> None:
@@ -48,12 +51,30 @@ def get_headers(auth_token: str) -> dict[str, str]:
 
 
 async def get_collection_token(
-    http: httpx.AsyncClient, library_id: str, parent_library_id: str | None
+    http: httpx.AsyncClient, library_id: str, parent_library_id: str | None,
+        use_consortial_plus_advantage_feed: bool = False,
 ) -> str:
     variables = {
         "parent_library_id": parent_library_id,
         "library_id": library_id,
     }
+
+    if parent_library_id:
+        if use_consortial_plus_advantage_feed:
+            endpoint = ADVANTAGE_ACCOUNTS_ENDPOINT % variables
+            resp = await http.get(endpoint)
+            handle_error(resp)
+            accounts = resp.json()["advantageAccounts"]
+            for account in accounts:
+                if account["id"] == int(library_id):
+                   return account["collectionToken"]
+
+            print(f"No Advantage account found for library {library_id}")
+            sys.exit(-1)
+        else:
+            endpoint = ADVANTAGE_LIBRARY_ENDPOINT
+    else:
+        endpoint = LIBRARY_ENDPOINT
 
     endpoint = ADVANTAGE_LIBRARY_ENDPOINT if parent_library_id else LIBRARY_ENDPOINT
 
@@ -134,6 +155,7 @@ async def fetch(
     fetch_availability: bool,
     connections: int,
     skip_not_found: bool,
+    use_consortial_plus_advantage_feed: bool = False,
 ) -> list[dict[str, Any]]:
     async with httpx.AsyncClient(
         timeout=Timeout(20.0, pool=None),
@@ -149,7 +171,7 @@ async def fetch(
         client.base_url = URL(base_url)
 
         collection_token = await get_collection_token(
-            client, library_id, parent_library_id
+            client, library_id, parent_library_id,use_consortial_plus_advantage_feed
         )
 
         first_page = await client.get(event_url(collection_token))
