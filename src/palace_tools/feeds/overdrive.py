@@ -20,9 +20,7 @@ LIBRARY_ENDPOINT = "/v1/libraries/%(library_id)s"
 ADVANTAGE_LIBRARY_ENDPOINT = (
     "/v1/libraries/%(parent_library_id)s/advantageAccounts/%(library_id)s"
 )
-ADVANTAGE_ACCOUNTS_ENDPOINT = (
-    "/v1/libraries/%(parent_library_id)s/advantageAccounts"
-)
+ADVANTAGE_ACCOUNTS_ENDPOINT = "/v1/libraries/%(parent_library_id)s/advantageAccounts"
 
 
 def handle_error(resp: Response) -> None:
@@ -51,8 +49,10 @@ def get_headers(auth_token: str) -> dict[str, str]:
 
 
 async def get_collection_token(
-    http: httpx.AsyncClient, library_id: str, parent_library_id: str | None,
-        use_consortial_plus_advantage_feed: bool = False,
+    http: httpx.AsyncClient,
+    library_id: str,
+    parent_library_id: str | None,
+    use_consortial_plus_advantage_feed: bool = False,
 ) -> str:
     variables = {
         "parent_library_id": parent_library_id,
@@ -67,7 +67,7 @@ async def get_collection_token(
             accounts = resp.json()["advantageAccounts"]
             for account in accounts:
                 if account["id"] == int(library_id):
-                   return str(account["collectionToken"])
+                    return str(account["collectionToken"])
 
             print(f"No Advantage account found for library {library_id}")
             sys.exit(-1)
@@ -171,7 +171,7 @@ async def fetch(
         client.base_url = URL(base_url)
 
         collection_token = await get_collection_token(
-            client, library_id, parent_library_id,use_consortial_plus_advantage_feed
+            client, library_id, parent_library_id, use_consortial_plus_advantage_feed
         )
 
         first_page = await client.get(event_url(collection_token))
