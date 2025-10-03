@@ -24,8 +24,8 @@ def stats(
     """
     This command outputs a json map with some file stats.
     """
-    accounts_stats: dict(Any, Any) = {}
-    stats: dict(Any, Any) = {}
+    accounts_stats: dict[Any, Any] = {}
+    stats: dict[Any, Any] = {}
 
     with input_file.open("r") as input:
         data = json.load(input)
@@ -129,7 +129,7 @@ def list_identifiers(
     This command produces a list of identifiers according to different criteria
     """
     identifiers = set()
-    all_formats = {}
+    all_formats: dict[str, int] = {}
     with input_file.open("r") as input:
         data = json.load(input)
         shared = filter_by_shared.value == "True"
