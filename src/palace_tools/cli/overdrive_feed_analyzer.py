@@ -1,16 +1,14 @@
 import json
+from enum import Enum
 from pathlib import Path
-from typing import Any, Set
+from typing import Any
 
 import typer
 
-from palace_tools.feeds.axis import availability
 from palace_tools.utils.typer import run_typer_app_as_main
 
 COPIES_OWNED = "copies owned"
-
 COPIES_AVAILABLE = "copies available"
-
 COPIES_SHARED = "owned copies shared"
 COPIES_UNSHARED = "owned copies unshared"
 
@@ -36,16 +34,11 @@ def stats (
         stats["titles"] =  titles
 
         for datum in data:
-            overdrive_id = datum["id"]
-            title_info: dict[str, Any] = titles.get(overdrive_id, {})
-            titles[overdrive_id] = title_info
-            title_info["title"] = datum["title"]
             availability = datum.get("availabilityV2", None)
             availability_array = titles.get("availabilityV2", [])
             if not availability:
                 print(f"no availabilityV2 found where book id = {datum['id']}\n")
             else:
-                title_info["availability"] = availability_array
                 availability_array.append(availability)
                 accounts = availability["accounts"]
                 book_level_copies_owned = availability.get("copiesOwned", 0)
@@ -81,6 +74,10 @@ def stats (
 
     print(json.dumps(stats, sort_keys=True, indent=4))
 
+class Shared(Enum):
+    SHARED = "True"
+    UNSHARED = "False"
+
 
 @app.command("list-identifiers")
 def list_identifiers (
@@ -91,25 +88,16 @@ def list_identifiers (
         ..., help="Output file", writable=True, file_okay=True, dir_okay=False
     ),
 
-    filter_by_shared: bool = typer.Option(
-            False, "-S", "--filter-by-shared", help="Enable filtering by shared"
-    ),
-    is_shared: bool = typer.Option(
-        False, "-s", "--shared", help="Is it shared?"
+    filter_by_shared: Shared = typer.Option(
+        None, "-s", "--shared", help="Is it shared?"
     ),
     unique_to_filtered_account: bool = typer.Option(
-        False, "-U", "--unique-to-filtered-account", help="Filter out identifiers that are unique to the filtered account"
+        False, "-U", "--unique-to-filtered-account", help="Filter out identifiers that are unique to the filtered account if set."
     ),
-    filter_by_account: bool = typer.Option(
-        False, "-A", "--filter-by-account", help="Enable filtering by account id"
+    filter_by_account_id: int = typer.Option(
+        None, "-a", "--filter-by-account-id", help="The account id to match on",
     ),
-    account_id: int = typer.Option(
-        -1, "-a", "--filter-by-account-id", help="The account id to match on",
-    ),
-    filter_by_format: bool = typer.Option(
-        False, "-F", "--filter-by-format", help="Enable filtering by format"
-    ),
-    format: str = typer.Option(
+    filter_by_formats: str = typer.Option(
         None, "-f", "--format", help="The format to match on",
     ),
 
@@ -122,6 +110,7 @@ def list_identifiers (
     all_formats = {}
     with input_file.open("r") as input:
         data = json.load(input)
+        shared = filter_by_shared.value == "True"
         for datum in data:
             availability = datum.get("availabilityV2", None)
             title_id = datum["id"]
@@ -129,18 +118,17 @@ def list_identifiers (
                 accounts = availability["accounts"]
                 for account in accounts:
                     acc_id = account["id"]
-                    account_filter_matches = True if not filter_by_account or (filter_by_account and account_id ==acc_id) else False
+                    account_filter_matches = True if filter_by_account_id is None or (filter_by_account_id == acc_id) else False
                     unique_to_filtered_account_matches = True if not unique_to_filtered_account or (unique_to_filtered_account and len(accounts) == 1) else False
-                    shared_filter_matches = True if not filter_by_shared or (filter_by_shared and account.get("shared", False) == is_shared) else False
+                    shared_filter_matches = True if filter_by_shared is None or (account.get("shared", False) == shared) else False
                     format_filter_matches = True
                     formats =  [x["id"] for x in datum.get("formats", None)]
-                    formats_to_match = [] if not format else format.split(",")
+                    formats_to_match = [] if not filter_by_formats else filter_by_formats.split(",")
 
                     for f in formats:
                         all_formats[f] = all_formats.get(f, 0) + 1
 
-                    if filter_by_format:
-
+                    if filter_by_formats:
                         matching_formats = [x for x in formats if x in formats_to_match]
                         format_filter_matches = True if len(matching_formats) > 0 else False
 
@@ -153,9 +141,9 @@ def list_identifiers (
             output.write(identifier + "\n")
 
     print(f"There are {len(identifiers)} identifiers matching the criteria: "
-          f"shared={None if not filter_by_shared else is_shared}, "
-          f"format={None if not filter_by_format else format}, "
-          f"account_id={None if not filter_by_account else account_id},  "
+          f"shared={filter_by_shared}, "
+          f"format={filter_by_formats}, "
+          f"account_id={filter_by_account_id},  "
           f"unique_to_account={unique_to_filtered_account}.  The "
           f"specific identifiers are can be found in the output file {output_file} \n" 
           f"available formats: {all_formats}")
