@@ -33,7 +33,7 @@ httpx = "^0.28.1"
 mutagen = "^1.47.0"
 palace-manager = {git = "https://github.com/ThePalaceProject/circulation.git", branch = "main"}
 pydantic = "^2.11.7"
-python = ">=3.10,<4"
+python = ">=3.12,<4"
 python-vlc = "^3.0.20123"
 pytz = "^2025.1"
 rich = "^14.0.0"
