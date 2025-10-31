@@ -1,7 +1,7 @@
 import json
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, Set
 
 import typer
 
@@ -29,16 +29,17 @@ def stats(
 
     with input_file.open("r") as input:
         data = json.load(input)
-        titles: dict[str, Any] = {}
-        stats["titles"] = titles
+        identifiers: Set[str] = set()
+        identifiers_with_no_availability: Set[str] = set()
 
         for datum in data:
             availability = datum.get("availabilityV2", None)
-            availability_array = titles.get("availabilityV2", [])
+            identifier = datum["id"]
+            identifiers.add(identifier)
             if not availability:
-                print(f"no availabilityV2 found where book id = {datum['id']}\n")
+                print(f"no availabilityV2 found where book id = {identifier}\n")
+                identifiers_with_no_availability.add(identifier)
             else:
-                availability_array.append(availability)
                 accounts = availability["accounts"]
                 book_level_copies_owned = availability.get("copiesOwned", 0)
                 book_level_copies_available = availability.get("copiesAvailable", 0)
@@ -79,8 +80,10 @@ def stats(
                     )
 
         stats["file_name"] = input.name
-        stats["unique titles"] = len(titles)
-        stats["title entries in file"] = len(data)
+        stats["unique identifiers"] = len(identifiers)
+        stats["total book entries in file"] = len(data)
+        stats["total identifiers without availability"] = len(identifiers_with_no_availability)
+        stats["identifiers without availability"] = list(identifiers_with_no_availability)
 
     accounts_stats["total advantage plus copies shared"] = sum(
         [x[COPIES_SHARED] for x in accounts_stats.values()]
@@ -90,9 +93,10 @@ def stats(
     print(json.dumps(stats, sort_keys=True, indent=4))
 
 
-class Shared(Enum):
-    SHARED = "True"
-    UNSHARED = "False"
+class SharedStatus(Enum):
+    ALL = "all"
+    SHARED = "shared"
+    UNSHARED = "unshared"
 
 
 @app.command("list-identifiers")
@@ -103,8 +107,9 @@ def list_identifiers(
     output_file: Path = typer.Argument(
         ..., help="Output file", writable=True, file_okay=True, dir_okay=False
     ),
-    filter_by_shared: Shared = typer.Option(
-        None, "-s", "--shared", help="Is it shared?"
+    filter_by_shared: SharedStatus = typer.Option(
+        SharedStatus.ALL, "-s", "--shared", help="Is it shared? By default both shared and "
+                                                 "unshared are included."
     ),
     unique_to_filtered_account: bool = typer.Option(
         False,
@@ -132,7 +137,6 @@ def list_identifiers(
     all_formats: dict[str, int] = {}
     with input_file.open("r") as input:
         data = json.load(input)
-        shared = filter_by_shared.value == "True"
         for datum in data:
             availability = datum.get("availabilityV2", None)
             title_id = datum["id"]
@@ -152,10 +156,13 @@ def list_identifiers(
                         or (unique_to_filtered_account and len(accounts) == 1)
                         else False
                     )
+
+                    account_shared_status = SharedStatus.SHARED if account.get("shared",
+                                                                               False) else SharedStatus.UNSHARED
                     shared_filter_matches = (
                         True
-                        if filter_by_shared is None
-                        or (account.get("shared", False) == shared)
+                        if filter_by_shared == SharedStatus.ALL
+                        or (account_shared_status == filter_by_shared)
                         else False
                     )
                     format_filter_matches = True
