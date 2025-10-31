@@ -51,7 +51,6 @@ types-pytz = "^2024.1.0.20240203"
 types-xmltodict = "^0.13.0.3"
 
 [tool.poetry.scripts]
-
 audiobook-manifest-summary = "palace_tools.cli.summarize_rwpm_audio_manifest:main"
 download-feed = "palace_tools.cli.download_feed:main"
 fetch-lcp = "palace_tools.cli.fetch_lcp:main"

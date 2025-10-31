@@ -1,7 +1,7 @@
 import json
 from enum import Enum
 from pathlib import Path
-from typing import Any, Set
+from typing import Any
 
 import typer
 
@@ -29,8 +29,8 @@ def stats(
 
     with input_file.open("r") as input:
         data = json.load(input)
-        identifiers: Set[str] = set()
-        identifiers_with_no_availability: Set[str] = set()
+        identifiers: set[str] = set()
+        identifiers_with_no_availability: set[str] = set()
 
         for datum in data:
             availability = datum.get("availabilityV2", None)
@@ -82,8 +82,12 @@ def stats(
         stats["file_name"] = input.name
         stats["unique identifiers"] = len(identifiers)
         stats["total book entries in file"] = len(data)
-        stats["total identifiers without availability"] = len(identifiers_with_no_availability)
-        stats["identifiers without availability"] = list(identifiers_with_no_availability)
+        stats["total identifiers without availability"] = len(
+            identifiers_with_no_availability
+        )
+        stats["identifiers without availability"] = list(
+            identifiers_with_no_availability
+        )
 
     accounts_stats["total advantage plus copies shared"] = sum(
         [x[COPIES_SHARED] for x in accounts_stats.values()]
@@ -108,8 +112,10 @@ def list_identifiers(
         ..., help="Output file", writable=True, file_okay=True, dir_okay=False
     ),
     filter_by_shared: SharedStatus = typer.Option(
-        SharedStatus.ALL, "-s", "--shared", help="Is it shared? By default both shared and "
-                                                 "unshared are included."
+        SharedStatus.ALL,
+        "-s",
+        "--shared",
+        help="Is it shared? By default both shared and " "unshared are included.",
     ),
     unique_to_filtered_account: bool = typer.Option(
         False,
@@ -157,8 +163,11 @@ def list_identifiers(
                         else False
                     )
 
-                    account_shared_status = SharedStatus.SHARED if account.get("shared",
-                                                                               False) else SharedStatus.UNSHARED
+                    account_shared_status = (
+                        SharedStatus.SHARED
+                        if account.get("shared", False)
+                        else SharedStatus.UNSHARED
+                    )
                     shared_filter_matches = (
                         True
                         if filter_by_shared == SharedStatus.ALL
@@ -166,7 +175,7 @@ def list_identifiers(
                         else False
                     )
                     format_filter_matches = True
-                    formats = [x["id"] for x in datum.get("formats",[])]
+                    formats = [x["id"] for x in datum.get("formats", [])]
                     formats_to_match = (
                         [] if not filter_by_formats else filter_by_formats.split(",")
                     )
