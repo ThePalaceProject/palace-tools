@@ -192,7 +192,7 @@ def list_identifiers(
         f"format={filter_by_formats}, "
         f"account_id={filter_by_account_id},  "
         f"unique_to_account={unique_to_filtered_account}.  The "
-        f"specific identifiers are can be found in the output file {output_file} \n"
+        f"specific identifiers can be found in the output file {output_file} \n"
         f"available formats: {all_formats}"
     )
 
