@@ -76,8 +76,6 @@ async def get_collection_token(
     else:
         endpoint = LIBRARY_ENDPOINT
 
-    endpoint = ADVANTAGE_LIBRARY_ENDPOINT if parent_library_id else LIBRARY_ENDPOINT
-
     resp = await http.get(endpoint % variables)
     handle_error(resp)
     return resp.json()["collectionToken"]  # type: ignore[no-any-return]
