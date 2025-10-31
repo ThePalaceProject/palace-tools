@@ -159,7 +159,7 @@ def list_identifiers(
                         else False
                     )
                     format_filter_matches = True
-                    formats = [x["id"] for x in datum.get("formats", None)]
+                    formats = [x["id"] for x in datum.get("formats",[])]
                     formats_to_match = (
                         [] if not filter_by_formats else filter_by_formats.split(",")
                     )
