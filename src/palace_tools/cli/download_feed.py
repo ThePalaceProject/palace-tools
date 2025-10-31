@@ -63,7 +63,7 @@ def download_overdrive(
         False,
         "-U",
         "--consortial-plus-advantage",
-        help="Fetch consortial plus advantage feed " "when using --parent-library-id",
+        help="Fetch consortial plus advantage feed when using --parent-library-id",
     ),
     fetch_metadata: bool = typer.Option(
         False, "-m", "--metadata", help="Fetch metadata"
