@@ -1,58 +1,41 @@
-import asyncio
-import base64
 import csv
 import traceback
 from pathlib import Path
 from typing import Any
 
-import httpx
+import requests
 import typer
+from requests import Response
 
 from palace.manager.api.admin.controller.library_settings import LibraryImportInfo
-from palace.manager.util.log import pluralize
 
-from palace_tools.utils.http.async_client import HTTPXAsyncClient
 from palace_tools.utils.typer import run_typer_app_as_main
 
 app = typer.Typer()
 
 
-async def upload_csv_rows_to_palace(
+def upload_library_to_palace(
     base_url: str,
-    access_token: str | None,
-    libraries: list[LibraryImportInfo],
+    username: str,
+    password: str,
+    library: LibraryImportInfo,
     verbose: bool = False,
-) -> httpx.Response:
+) -> Response:
     """Upload CSV rows as JSON to Palace import-libraries-from-csv endpoint."""
     import_url = f"{base_url.rstrip('/')}/admin/libraries/import"
 
-    headers = {
-        "Authorization": f"Basic {access_token}",
-        "Content-Type": "application/json",
-    }
-
     if verbose:
-        library_count = len(libraries)
-        typer.echo(
-            f"Importing {len(libraries)} {pluralize(library_count,'library')} to "
-            f"{import_url}...This operation may take any where for a couple of seconds to several minutes "
-            f"depending on how many libraries you are importing."
-        )
+        typer.echo(f"Importing {library.name} to {import_url}...")
 
-    async with HTTPXAsyncClient() as client:
-        # TODO:  The large timeout is necessary because it appears that it takes about 6 seconds per library.
-        #  The main time sink appears to be the creation of the default lanes.
-        #  routine.  If a hundred libraries are imported at once, it could take a
-        #  few minutes, especially if running against a live instance with collections already configured.
-        #  If this time lag becomes a problem, we will likely need to 1) optimize the default lane setup and/or 2) post
-        #  one library at a time rather than trying to import all in one transaction.
-        response = await client.post(
-            import_url,
-            json={"libraries": [library.__dict__ for library in libraries]},
-            headers=headers,
-            timeout=600.0,
-        )
-
+    # I'm sending these one by one because the import operation currently takes several seconds for each
+    # library due to the database intensive default lane creation operation. Since there can be over a hundred
+    # libraries on a CM, it's better to import the libraries one at a time.
+    response = requests.post(
+        url=import_url,
+        json={"libraries": [library.__dict__]},
+        auth=(username, password),
+        headers={"Content-Type": "application/json"},
+    )
     return response
 
 
@@ -89,10 +72,7 @@ def import_libraries(
         typer.echo(f"Palace Base URL: {palace_base_url}")
 
     try:
-        # Run the async operations
-        asyncio.run(
-            _import_csv_async(username, password, palace_base_url, csv_file, verbose)
-        )
+        _import_csv_async(username, password, palace_base_url, csv_file, verbose)
 
     except Exception as e:
         typer.echo(f"Error importing CSV file: {e}", err=True)
@@ -101,7 +81,7 @@ def import_libraries(
         raise typer.Exit(1)
 
 
-async def _import_csv_async(
+def _import_csv_async(
     username: str, password: str, palace_base_url: str, csv_file: Path, verbose: bool
 ) -> None:
     """Async implementation of CSV import."""
@@ -115,23 +95,19 @@ async def _import_csv_async(
         if libraries:
             typer.echo(f"Columns: {list(libraries[0].__dict__.keys())}")
 
-    # Create basic auth header
-    credentials = f"{username}:{password}"
-    encoded_credentials = base64.b64encode(credentials.encode("utf-8")).decode("ascii")
-    auth_header = f"{encoded_credentials}"
+    for library in libraries:
+        response = upload_library_to_palace(
+            palace_base_url, username, password, library, verbose
+        )
 
-    response = await upload_csv_rows_to_palace(
-        palace_base_url, auth_header, libraries, verbose
-    )
-
-    if response.status_code in [200, 201, 207]:
-        typer.echo("✅ Successfully imported libraries from CSV file!")
-        if verbose and response.text:
-            typer.echo(f"Response: {response.text}")
-    else:
-        typer.echo(f"❌ Failed to import libraries. Status: {response.status_code}")
-        typer.echo(f"Error: {response.text}")
-        raise typer.Exit(1)
+        if response.status_code in [200, 201, 207]:
+            typer.echo(f"✅ Successfully imported library {library.name} from CSV file!")
+            if verbose and response.text:
+                typer.echo(f"Response: {response.text}")
+        else:
+            typer.echo(f"❌ Failed to import libraries. Status: {response.status_code}")
+            typer.echo(f"Error: {response.text}")
+            raise typer.Exit(1)
 
 
 def _convert_string_value_to_list(d: dict[str, Any], field_name: str) -> None:
