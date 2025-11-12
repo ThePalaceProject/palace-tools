@@ -1,0 +1,3 @@
+name,short_name,description,website_url,patron_support_email,large_collection_languages,small_collection_languages,facets_default_order,enabled_entry_points
+Import Test Library 1,test1,A test library for debugging,https://test1.example.com,admin@test1.example.com,en,es,added,"All,Book,Audio"
+Import Test Library 2,test2,Another test library,https://test2.example.com,admin@test2.example.com,en,es,added,"All,Book,Audio"

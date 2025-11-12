@@ -48,12 +48,14 @@ pre-commit = "^4.3.0"
 [tool.poetry.group.dev.dependencies]
 mypy = "^1.8.0"
 types-pytz = "^2024.1.0.20240203"
+types-requests = "^2.32.4.20250913"
 types-xmltodict = "^0.13.0.3"
 
 [tool.poetry.scripts]
 audiobook-manifest-summary = "palace_tools.cli.summarize_rwpm_audio_manifest:main"
 download-feed = "palace_tools.cli.download_feed:main"
 fetch-lcp = "palace_tools.cli.fetch_lcp:main"
+import-libraries-from-csv = "palace_tools.cli.import_libraries_from_csv:main"
 overdrive_feed_analyzer = "palace_tools.cli.overdrive_feed_analyzer:main"
 palace-terminal = "palace_tools.cli.palace_terminal:main"
 patron-bookshelf = "palace_tools.cli.patron_bookshelf:main"

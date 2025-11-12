@@ -92,14 +92,14 @@ tests-mypy = ["mypy (>=1.11.1) ; platform_python_implementation == \"CPython\" a
 
 [[package]]
 name = "aws-xray-sdk"
-version = "2.14.0"
+version = "2.15.0"
 description = "The AWS X-Ray SDK for Python (the SDK) enables Python developers to record and emit information from within their applications to the AWS X-Ray service."
 optional = false
 python-versions = ">=3.7"
 groups = ["main"]
 files = [
-    {file = "aws_xray_sdk-2.14.0-py2.py3-none-any.whl", hash = "sha256:cfbe6feea3d26613a2a869d14c9246a844285c97087ad8f296f901633554ad94"},
-    {file = "aws_xray_sdk-2.14.0.tar.gz", hash = "sha256:aab843c331af9ab9ba5cefb3a303832a19db186140894a523edafc024cc0493c"},
+    {file = "aws_xray_sdk-2.15.0-py2.py3-none-any.whl", hash = "sha256:422d62ad7d52e373eebb90b642eb1bb24657afe03b22a8df4a8b2e5108e278a3"},
+    {file = "aws_xray_sdk-2.15.0.tar.gz", hash = "sha256:794381b96e835314345068ae1dd3b9120bd8b4e21295066c37e8814dbb341365"},
 ]
 
 [package.dependencies]
@@ -2464,7 +2464,7 @@ develop = false
 [package.dependencies]
 alembic = {version = "^1.8.1", extras = ["tz"]}
 annotated-types = "^0.7.0"
-aws-xray-sdk = "~2.14"
+aws-xray-sdk = "~2.15"
 bcrypt = "^5.0.0"
 bidict = "^0.23.1"
 boto3 = "^1.28"
@@ -2532,7 +2532,7 @@ xmlsec = "^1.3.16"
 type = "git"
 url = "https://github.com/ThePalaceProject/circulation.git"
 reference = "main"
-resolved_reference = "e698e3054b4a195b1ea3eeebad37e9384b03707a"
+resolved_reference = "e1725b60ba00c5489d406468615e75f27d4eb0e2"
 
 [[package]]
 name = "pathspec"
@@ -3025,14 +3025,14 @@ yaml = ["pyyaml (>=6.0.1)"]
 
 [[package]]
 name = "pydantic-xml"
-version = "2.17.2"
+version = "2.18.0"
 description = "pydantic xml extension"
 optional = false
 python-versions = ">=3.8"
 groups = ["main"]
 files = [
-    {file = "pydantic_xml-2.17.2-py3-none-any.whl", hash = "sha256:3990908939ecc18f304045f3ee544bbdb68e253248fde20dc1af6829e80c03f5"},
-    {file = "pydantic_xml-2.17.2.tar.gz", hash = "sha256:0e0f2ae84518198373b593eca58bba12b08c1a7ace368dd4ed12b60babc8182d"},
+    {file = "pydantic_xml-2.18.0-py3-none-any.whl", hash = "sha256:9b2412c8c84242223979e9274ade1d3566028cf6a9b1cdb6389384d2db5292c0"},
+    {file = "pydantic_xml-2.18.0.tar.gz", hash = "sha256:e6838c9247de2ffe28127581de3cc360bc7176abe5fd87751dbafdd966416749"},
 ]
 
 [package.dependencies]
@@ -4172,6 +4172,21 @@ files = [
 ]
 
 [[package]]
+name = "types-requests"
+version = "2.32.4.20250913"
+description = "Typing stubs for requests"
+optional = false
+python-versions = ">=3.9"
+groups = ["dev"]
+files = [
+    {file = "types_requests-2.32.4.20250913-py3-none-any.whl", hash = "sha256:78c9c1fffebbe0fa487a418e0fa5252017e9c60d1a2da394077f1780f655d7e1"},
+    {file = "types_requests-2.32.4.20250913.tar.gz", hash = "sha256:abd6d4f9ce3a9383f269775a9835a4c24e5cd6b9f647d64f88aa4613c33def5d"},
+]
+
+[package.dependencies]
+urllib3 = ">=2"
+
+[[package]]
 name = "types-setuptools"
 version = "80.9.0.20250529"
 description = "Typing stubs for setuptools"
@@ -4278,7 +4293,7 @@ version = "2.5.0"
 description = "HTTP library with thread-safe connection pooling, file post, and more."
 optional = false
 python-versions = ">=3.9"
-groups = ["main"]
+groups = ["main", "dev"]
 files = [
     {file = "urllib3-2.5.0-py3-none-any.whl", hash = "sha256:e6b01673c0fa6a13e374b50871808eb3bf7046c4b125b216f6bf1cc604cff0dc"},
     {file = "urllib3-2.5.0.tar.gz", hash = "sha256:3fc47733c7e419d4bc3f6b3dc2b4f890bb743906a30d56ba4a5bfa4bbff92760"},
@@ -4561,4 +4576,4 @@ files = [
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<4"
-content-hash = "95accde5568c3a7774427d0b8c6abbacd56d85077f14cda5436cb26d9f3cf923"
+content-hash = "b5303145a3aef8edce1584d45da7b696b846e79663c06d8aad2a8d3588cc5f20"

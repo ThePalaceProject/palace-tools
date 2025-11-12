@@ -37,6 +37,9 @@ manifest conforming to the [Audiobook Profile](https://github.com/readium/webpub
         - Validate an OPDS2 feed
     - `opds2-odl`
         - Validate an OPDS2 + ODL feed
+- `import-libraries-from-csv`
+    - Import libraries from a csv to ease the burden of setting up CMs with many libraries.
+    - Note: there is a sample CSV file in the ./samples/ directory that shows the expected format of the CSV file.
 
 ### Library Support
 
