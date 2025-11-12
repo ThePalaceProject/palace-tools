@@ -23,6 +23,7 @@ jobs:
         with:
           version: "2.1.1"
           cache: true
+          cache-name: only-ci
 
       - name: Install Pre-commit
         run: |
