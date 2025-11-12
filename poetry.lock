@@ -92,14 +92,14 @@ tests-mypy = ["mypy (>=1.11.1) ; platform_python_implementation == \"CPython\" a
 
 [[package]]
 name = "aws-xray-sdk"
-version = "2.14.0"
+version = "2.15.0"
 description = "The AWS X-Ray SDK for Python (the SDK) enables Python developers to record and emit information from within their applications to the AWS X-Ray service."
 optional = false
 python-versions = ">=3.7"
 groups = ["main"]
 files = [
-    {file = "aws_xray_sdk-2.14.0-py2.py3-none-any.whl", hash = "sha256:cfbe6feea3d26613a2a869d14c9246a844285c97087ad8f296f901633554ad94"},
-    {file = "aws_xray_sdk-2.14.0.tar.gz", hash = "sha256:aab843c331af9ab9ba5cefb3a303832a19db186140894a523edafc024cc0493c"},
+    {file = "aws_xray_sdk-2.15.0-py2.py3-none-any.whl", hash = "sha256:422d62ad7d52e373eebb90b642eb1bb24657afe03b22a8df4a8b2e5108e278a3"},
+    {file = "aws_xray_sdk-2.15.0.tar.gz", hash = "sha256:794381b96e835314345068ae1dd3b9120bd8b4e21295066c37e8814dbb341365"},
 ]
 
 [package.dependencies]
@@ -2464,7 +2464,7 @@ develop = false
 [package.dependencies]
 alembic = {version = "^1.8.1", extras = ["tz"]}
 annotated-types = "^0.7.0"
-aws-xray-sdk = "~2.14"
+aws-xray-sdk = "~2.15"
 bcrypt = "^5.0.0"
 bidict = "^0.23.1"
 boto3 = "^1.28"
@@ -2532,7 +2532,7 @@ xmlsec = "^1.3.16"
 type = "git"
 url = "https://github.com/ThePalaceProject/circulation.git"
 reference = "main"
-resolved_reference = "e698e3054b4a195b1ea3eeebad37e9384b03707a"
+resolved_reference = "e1725b60ba00c5489d406468615e75f27d4eb0e2"
 
 [[package]]
 name = "pathspec"
@@ -3025,14 +3025,14 @@ yaml = ["pyyaml (>=6.0.1)"]
 
 [[package]]
 name = "pydantic-xml"
-version = "2.17.2"
+version = "2.18.0"
 description = "pydantic xml extension"
 optional = false
 python-versions = ">=3.8"
 groups = ["main"]
 files = [
-    {file = "pydantic_xml-2.17.2-py3-none-any.whl", hash = "sha256:3990908939ecc18f304045f3ee544bbdb68e253248fde20dc1af6829e80c03f5"},
-    {file = "pydantic_xml-2.17.2.tar.gz", hash = "sha256:0e0f2ae84518198373b593eca58bba12b08c1a7ace368dd4ed12b60babc8182d"},
+    {file = "pydantic_xml-2.18.0-py3-none-any.whl", hash = "sha256:9b2412c8c84242223979e9274ade1d3566028cf6a9b1cdb6389384d2db5292c0"},
+    {file = "pydantic_xml-2.18.0.tar.gz", hash = "sha256:e6838c9247de2ffe28127581de3cc360bc7176abe5fd87751dbafdd966416749"},
 ]
 
 [package.dependencies]
