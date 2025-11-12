@@ -7,6 +7,7 @@ from typing import Any
 
 import httpx
 import typer
+
 from palace.manager.api.admin.controller.library_settings import LibraryImportInfo
 from palace.manager.util.log import pluralize
 
@@ -32,9 +33,11 @@ async def upload_csv_rows_to_palace(
 
     if verbose:
         library_count = len(libraries)
-        typer.echo(f"Importing {len(libraries)} {pluralize(library_count, "library", "libraries")} to "
-                   f"{import_url}...This operation may take any where for a couple of seconds to several minutes "
-                   f"depending on how many libraries you are importing.")
+        typer.echo(
+            f"Importing {len(libraries)} {pluralize(library_count,'library')} to "
+            f"{import_url}...This operation may take any where for a couple of seconds to several minutes "
+            f"depending on how many libraries you are importing."
+        )
 
     async with HTTPXAsyncClient() as client:
         # TODO:  The large timeout is necessary because it appears that it takes about 6 seconds per library.
@@ -44,8 +47,10 @@ async def upload_csv_rows_to_palace(
         #  If this time lag becomes a problem, we will likely need to 1) optimize the default lane setup and/or 2) post
         #  one library at a time rather than trying to import all in one transaction.
         response = await client.post(
-            import_url, json={"libraries": [library.__dict__ for library in libraries]},
-            headers=headers,timeout=600.0,
+            import_url,
+            json={"libraries": [library.__dict__ for library in libraries]},
+            headers=headers,
+            timeout=600.0,
         )
 
     return response
@@ -65,8 +70,8 @@ def import_libraries(
     csv_file: Path = typer.Argument(
         ...,
         help="Path to the library CSV file to process: The CSV must contain the following headers: "
-             "name, short_name, description, website_url, patron_support_email, large_collection_languages, "
-             "small_collection_languages, enabled_entry_points, facets_default_order",
+        "name, short_name, description, website_url, patron_support_email, large_collection_languages, "
+        "small_collection_languages, enabled_entry_points, facets_default_order",
         exists=True,
         file_okay=True,
         dir_okay=False,
@@ -129,7 +134,7 @@ async def _import_csv_async(
         raise typer.Exit(1)
 
 
-def _convert_string_value_to_list(d: dict[str,Any], field_name: str) -> None:
+def _convert_string_value_to_list(d: dict[str, Any], field_name: str) -> None:
     d[field_name] = list(d[field_name].split(","))
 
 
@@ -143,7 +148,7 @@ def _parse_csv_file(csv_file: Path, verbose: bool = False) -> list[LibraryImport
         for row in reader:
             # Convert any empty strings to None for cleaner JSON
             cleaned_row = {k: (v if v.strip() else None) for k, v in row.items()}
-            _convert_string_value_to_list(cleaned_row,"large_collection_languages")
+            _convert_string_value_to_list(cleaned_row, "large_collection_languages")
             _convert_string_value_to_list(cleaned_row, "small_collection_languages")
             _convert_string_value_to_list(cleaned_row, "enabled_entry_points")
             library_info_info = LibraryImportInfo(**cleaned_row)
