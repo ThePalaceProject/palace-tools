@@ -22,21 +22,13 @@ jobs:
         uses: ThePalaceProject/circulation/.github/actions/poetry@main
         with:
           version: "2.1.1"
-          cache: true
-          cache-name: only-ci
+          cache: false
 
       - name: Install Pre-commit
         run: |
           poetry install --only ci
         env:
           POETRY_VIRTUALENVS_CREATE: false
-
-      - name: Restore pre-commit cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/pre-commit
-          key: pre-commit-${{ runner.os }}-py${{ env.PYTHON_VERSION }}-${{ hashFiles('.pre-commit-config.yaml') }}
-          restore-keys: pre-commit-${{ runner.os }}-py${{ env.PYTHON_VERSION }}
 
       - name: Lint
         run: pre-commit run --all-files --show-diff-on-failure
