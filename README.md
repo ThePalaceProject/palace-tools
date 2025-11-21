@@ -40,6 +40,14 @@ manifest conforming to the [Audiobook Profile](https://github.com/readium/webpub
 - `import-libraries-from-csv`
     - Import libraries from a csv to ease the burden of setting up CMs with many libraries.
     - Note: there is a sample CSV file in the ./samples/ directory that shows the expected format of the CSV file.
+- `create-patron-auth-service`
+    - `validate`
+        - Validate that JSON input can be converted to SAMLWebSSOAuthSettings without posting to the Palace service.
+        - Accepts JSON as either a string or a file path.
+    - `create`
+        - Create a patron authentication service by posting SAMLWebSSOAuthSettings to the Palace service.
+        - Validates that the JSON input can be converted to SAMLWebSSOAuthSettings before posting.
+        - Accepts JSON as either a string or a file path.
 
 ### Library Support
 
