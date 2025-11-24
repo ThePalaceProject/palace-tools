@@ -32,6 +32,7 @@ version = "0"
 httpx = "^0.28.1"
 mutagen = "^1.47.0"
 palace-manager = {git = "https://github.com/ThePalaceProject/circulation.git", branch = "main"}
+psycopg2-binary = "^2.9.11"
 pydantic = "^2.11.7"
 python = ">=3.12,<4"
 python-vlc = "^3.0.20123"
@@ -62,12 +63,6 @@ palace-terminal = "palace_tools.cli.palace_terminal:main"
 patron-bookshelf = "palace_tools.cli.patron_bookshelf:main"
 validate-audiobook-manifests = "palace_tools.cli.validate_manifests:main"
 validate-feed = "palace_tools.cli.validate_feed:main"
-
-[tool.pytest.ini_options]
-python_classes = ["Test*"]
-python_files = ["*_test.py", "test_*.py"]
-python_functions = ["test_*"]
-testpaths = ["tests"]
 
 [tool.tomlsort]
 ignore_case = true
