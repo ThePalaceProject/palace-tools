@@ -8,7 +8,7 @@ import requests
 import typer
 from pydantic import ValidationError
 
-from palace.manager.api.admin.controller.patron_auth_services import (
+from palace.manager.integration.patron_auth.saml.configuration.model import (
     SAMLWebSSOAuthSettings,
 )
 
@@ -26,13 +26,13 @@ def _load_json_input(json_input: str | Path) -> dict[str, Any]:
             raise typer.BadParameter(f"Path is not a file: {json_input}")
         with json_input.open("r", encoding="utf-8") as f:
             try:
-                return json.load(f)
+                return json.load(f)  # type: ignore[no-any-return]
             except json.JSONDecodeError as e:
                 raise typer.BadParameter(f"Invalid JSON in file: {e}")
     else:
         # It's a JSON string
         try:
-            return json.loads(json_input)
+            return json.loads(json_input)  # type: ignore[no-any-return]
         except json.JSONDecodeError as e:
             raise typer.BadParameter(f"Invalid JSON string: {e}")
 
