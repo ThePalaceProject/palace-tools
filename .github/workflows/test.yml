@@ -31,5 +31,5 @@ jobs:
       - name: Install Python Packages 📦
         run: poetry install --without ci
 
-      - name: Run Tests 🧪
-        run: poetry run pytest
+      - name: Run Tests with Tox 🧪
+        run: poetry run tox
