@@ -151,18 +151,26 @@ class OAuthAuth(httpx.Auth):
             yield request
 
 
-def error_and_exit(response: httpx.Response, detail: str = "") -> None:
+def print_error(response: httpx.Response, detail: str = "") -> None:
     print(f"Error: {detail}")
     print(f"Request: {response.request.method} {response.request.url}")
     print(f"Status code: {response.status_code}")
     print(f"Headers: {json.dumps(dict(response.headers), indent=4)}")
     print(f"Body: {response.text}")
+
+
+def error_and_exit(response: httpx.Response, detail: str = "") -> None:
+    print_error(response, detail)
     sys.exit(-1)
 
 
-def make_request(session: httpx.Client, url: str) -> dict[str, Any]:
+def make_request(session: httpx.Client, url: str, retries: int = 0) -> dict[str, Any]:
     response = session.get(url)
     if response.status_code != 200:
+        if retries < 3:
+            print_error(response)
+            print(f"Retrying... ({retries + 1}/3)")
+            return make_request(session, url, retries + 1)
         error_and_exit(response)
     return response.json()  # type: ignore[no-any-return]
 
