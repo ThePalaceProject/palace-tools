@@ -8,7 +8,7 @@ profile = "black"
 sections = "FUTURE,STDLIB,THIRDPARTY,PALACE,FIRSTPARTY,LOCALFOLDER"
 
 [tool.mypy]
-files = ["src"]
+files = ["src", "tests"]
 plugins = ["pydantic.mypy"]
 strict = true
 
