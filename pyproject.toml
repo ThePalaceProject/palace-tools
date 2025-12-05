@@ -52,7 +52,7 @@ pytest = "^8.0.0"
 tox = "^4.0.0"
 types-pytz = "^2025.2.0.20251108"
 types-requests = "^2.32.4.20250913"
-types-xmltodict = "^0.13.0.3"
+types-xmltodict = "^1.0.1.20250920"
 
 [tool.poetry.scripts]
 audiobook-manifest-summary = "palace_tools.cli.summarize_rwpm_audio_manifest:main"
