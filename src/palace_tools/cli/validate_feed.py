@@ -21,8 +21,7 @@ def validate[**P](
     *args: P.args,
     **kwargs: P.kwargs,
 ) -> None:
-    # disable logging, we don't want its output to clutter the validation output
-    logging.disable(logging.ERROR)
+    logging.basicConfig(level=logging.ERROR)
     results = validation_func(*args, **kwargs)
 
     if results:
