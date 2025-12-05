@@ -8,7 +8,7 @@ profile = "black"
 sections = "FUTURE,STDLIB,THIRDPARTY,PALACE,FIRSTPARTY,LOCALFOLDER"
 
 [tool.mypy]
-files = ["src"]
+files = ["src", "tests"]
 plugins = ["pydantic.mypy"]
 strict = true
 
@@ -62,6 +62,7 @@ import-libraries-from-csv = "palace_tools.cli.import_libraries_from_csv:main"
 overdrive_feed_analyzer = "palace_tools.cli.overdrive_feed_analyzer:main"
 palace-terminal = "palace_tools.cli.palace_terminal:main"
 patron-bookshelf = "palace_tools.cli.patron_bookshelf:main"
+stress-test-opds2 = "palace_tools.cli.stress_test_opds2:main"
 validate-audiobook-manifests = "palace_tools.cli.validate_manifests:main"
 validate-feed = "palace_tools.cli.validate_feed:main"
 
