@@ -15,9 +15,7 @@ from palace_tools.validation.opds import validate_opds_feeds, validate_opds_publ
 app = typer.Typer()
 
 
-def validate[
-    **P
-](
+def validate[**P](
     output_file: Path | None,
     validation_func: Callable[P, list[str]],
     *args: P.args,
