@@ -65,16 +65,16 @@ def stats(
                             COPIES_UNSHARED, 0
                         )
                     else:
-                        account_stats[
-                            COPIES_UNSHARED
-                        ] = copies_owned + account_stats.get(COPIES_UNSHARED, 0)
+                        account_stats[COPIES_UNSHARED] = (
+                            copies_owned + account_stats.get(COPIES_UNSHARED, 0)
+                        )
                         account_stats[COPIES_SHARED] = account_stats.get(
                             COPIES_SHARED, 0
                         )
 
-                    account_stats[
-                        COPIES_AVAILABLE
-                    ] = copies_available + account_stats.get(COPIES_AVAILABLE, 0)
+                    account_stats[COPIES_AVAILABLE] = (
+                        copies_available + account_stats.get(COPIES_AVAILABLE, 0)
+                    )
                     account_stats[COPIES_OWNED] = copies_owned + account_stats.get(
                         COPIES_OWNED, 0
                     )

@@ -28,8 +28,8 @@ def print_bookshelf_summary(bookshelf: OPDS2Feed) -> None:
             ):
                 print(f"        Indirect type: {indirect['type']}")
 
-            if (
-                hashed_pw := link.properties.get("lcp_hashed_passphrase")
+            if hashed_pw := (
+                link.properties.get("lcp_hashed_passphrase")
                 if link.properties
                 else None
             ):

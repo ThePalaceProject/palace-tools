@@ -141,7 +141,7 @@ def audio_segments_for_toc_entry(
 def audio_segments_for_all_toc_entries(
     all_toc_entries: Iterable[ToCEntry],
     all_tracks: Sequence[AudioTrack],
-) -> Generator[ToCAudioSegmentSequence, None, None]:
+) -> Generator[ToCAudioSegmentSequence]:
     for entry, next_entry in sliding_window(all_toc_entries, 2, nulls=1):
         if entry is None:
             raise ValueError(

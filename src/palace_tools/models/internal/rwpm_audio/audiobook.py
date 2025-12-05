@@ -35,7 +35,7 @@ class EnhancedToCEntry(ToCEntry):
         return sum(toc.duration for toc in self.enhanced_toc_in_playback_order)
 
     @property
-    def enhanced_toc_in_playback_order(self) -> Generator[EnhancedToCEntry, None, None]:
+    def enhanced_toc_in_playback_order(self) -> Generator[EnhancedToCEntry]:
         """Iterator yielding all ToCEntries in the hierarchy, in the order they appear in the manifest."""
         yield self
         for child in self.sub_entries:
@@ -91,7 +91,7 @@ class Audiobook:
         )
 
     @property
-    def toc_in_playback_order(self) -> Generator[ToCEntry, None, None]:
+    def toc_in_playback_order(self) -> Generator[ToCEntry]:
         """Iterator yielding all ToC entries in the order that they appear in the manifest.
 
         If there is no `toc` object (or it is empty), we will construct
@@ -100,7 +100,7 @@ class Audiobook:
         yield from self.manifest.toc_in_playback_order
 
     @property
-    def enhanced_toc_in_playback_order(self) -> Generator[EnhancedToCEntry, None, None]:
+    def enhanced_toc_in_playback_order(self) -> Generator[EnhancedToCEntry]:
         """Iterator yielding all ToC entries in the order that they appear in the manifest.
 
         If there is no `toc` object (or it is empty), we will construct

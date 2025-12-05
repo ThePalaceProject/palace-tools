@@ -101,7 +101,9 @@ def _import_csv_async(
         )
 
         if response.status_code in [200, 201, 207]:
-            typer.echo(f"✅ Successfully imported library {library.name} from CSV file!")
+            typer.echo(
+                f"✅ Successfully imported library {library.name} from CSV file!"
+            )
             if verbose and response.text:
                 typer.echo(f"Response: {response.text}")
         else:

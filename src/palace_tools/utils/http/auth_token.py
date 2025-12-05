@@ -25,16 +25,13 @@ class AuthorizationToken(Protocol):
     token_type: str
 
     @property
-    def is_valid(self) -> bool:
-        ...
+    def is_valid(self) -> bool: ...
 
     @property
-    def is_expired(self) -> bool:
-        ...
+    def is_expired(self) -> bool: ...
 
     @property
-    def as_http_headers(self) -> Mapping[str, str]:
-        ...
+    def as_http_headers(self) -> Mapping[str, str]: ...
 
 
 class BaseAuthorizationToken(ABC, ApiBaseModel):
@@ -48,13 +45,11 @@ class BaseAuthorizationToken(ABC, ApiBaseModel):
 
     @property
     @abstractmethod
-    def is_valid(self) -> bool:
-        ...
+    def is_valid(self) -> bool: ...
 
     @property
     @abstractmethod
-    def is_expired(self) -> bool:
-        ...
+    def is_expired(self) -> bool: ...
 
 
 class BasicAuthToken(BaseAuthorizationToken):

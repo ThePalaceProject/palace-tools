@@ -27,7 +27,7 @@ class ToCEntry(BaseModel):
         self.track_offset = int(offset)
         return self
 
-    def toc_in_playback_order(self) -> Generator[ToCEntry, None, None]:
+    def toc_in_playback_order(self) -> Generator[ToCEntry]:
         """Iterator yielding all ToCEntries in the hierarchy, in the order they appear in the manifest."""
         yield self
         if self.children:
@@ -107,7 +107,7 @@ class Manifest(BaseModel):
         ]
 
     @property
-    def toc_in_playback_order(self) -> Generator[ToCEntry, None, None]:
+    def toc_in_playback_order(self) -> Generator[ToCEntry]:
         """Iterator yielding all ToC entries in the order that they appear in the manifest.
 
         If there is no `toc` object (or it is empty), we will construct
