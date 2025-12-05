@@ -316,15 +316,13 @@ def stress_test(
         "-c",
         help="Number of concurrent streams",
     ),
-    username: str
-    | None = typer.Option(
+    username: str | None = typer.Option(
         None,
         "--username",
         "-u",
         help="Username for authentication",
     ),
-    password: str
-    | None = typer.Option(
+    password: str | None = typer.Option(
         None,
         "--password",
         "-p",
