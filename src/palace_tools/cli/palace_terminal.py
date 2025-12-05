@@ -190,7 +190,7 @@ class Tracks:
     def __len__(self) -> int:
         return len(self.tracks)
 
-    def __iter__(self) -> Generator[Track, None, None]:
+    def __iter__(self) -> Generator[Track]:
         yield from self.tracks
 
     def calculate_total_duration(self) -> None:
@@ -271,7 +271,7 @@ class TableOfContents:
     def __len__(self) -> int:
         return len(self.toc)
 
-    def __iter__(self) -> Generator[Chapter, None, None]:
+    def __iter__(self) -> Generator[Chapter]:
         yield from self.toc
 
     def next_chapter(self, chapter: Chapter) -> Chapter | None:

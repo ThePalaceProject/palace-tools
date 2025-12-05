@@ -40,13 +40,13 @@ async def streaming_fetch(
     url: str,
     /,
     into_files: BinaryIO | Sequence[BinaryIO] | None = None,
-    content_callbacks: Callable[[bytes], Any]
-    | Sequence[Callable[[bytes], Any]]
-    | None = None,
+    content_callbacks: (
+        Callable[[bytes], Any] | Sequence[Callable[[bytes], Any]] | None
+    ) = None,
     total_setters: Callable[[int], Any] | Sequence[Callable[[int], Any]] | None = None,
-    progress_updaters: Callable[[int], Any]
-    | Sequence[Callable[[int], Any]]
-    | None = None,
+    progress_updaters: (
+        Callable[[int], Any] | Sequence[Callable[[int], Any]] | None
+    ) = None,
     http_client: AsyncClient | None = None,
     raise_for_status: bool = False,
 ) -> Response:
@@ -72,9 +72,9 @@ async def streaming_fetch_with_progress(
     url: str,
     /,
     into_files: BinaryIO | list[BinaryIO] | None = None,
-    content_callbacks: Callable[[bytes], Any]
-    | list[Callable[[bytes], Any]]
-    | None = None,
+    content_callbacks: (
+        Callable[[bytes], Any] | list[Callable[[bytes], Any]] | None
+    ) = None,
     progress_bar: rich.progress.Progress | bool = True,
     auto_connect: bool = False,
     task_label: str | None = None,
