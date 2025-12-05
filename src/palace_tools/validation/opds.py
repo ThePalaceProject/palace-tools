@@ -128,20 +128,22 @@ def validate_opds_publications(
     url: str | None = None,
     ignore_errors: list[str],
     display_diff: bool,
+    capture_warnings: bool = True,
 ) -> list[str]:
     publication_adapter = TypeAdapter(publication_cls)
     errors = []
 
-    log_capture = _setup_log_capture()
+    log_capture = _setup_log_capture() if capture_warnings else None
 
     for publication_dict in publications:
-        log_capture.clear()
+        if log_capture:
+            log_capture.clear()
 
         try:
             publication = publication_adapter.validate_python(publication_dict)
 
             # Check for captured warnings during parsing
-            warnings = "".join(log_capture.get_messages())
+            warnings = "".join(log_capture.get_messages()) if log_capture else None
 
             if display_diff:
                 diff = "\n".join(_diff_original_parsed(publication_dict, publication))
@@ -171,6 +173,7 @@ def validate_opds_feeds(
     publication_cls: Any,
     ignore_errors: list[str],
     display_diff: bool,
+    capture_warnings: bool = True,
 ) -> list[str]:
     errors = []
 
@@ -202,6 +205,7 @@ def validate_opds_feeds(
                 url=url,
                 ignore_errors=ignore_errors,
                 display_diff=display_diff,
+                capture_warnings=capture_warnings,
             )
         )
 
