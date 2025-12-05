@@ -109,15 +109,16 @@ def _publication_issues(
 
 def _setup_log_capture() -> LogCapture:
     logger = logging.getLogger(OPDS_LOGGER_NAME)
-    handler = LogCapture(logging.WARNING)
-    handler.setFormatter(logging.Formatter("%(message)s"))
+    log_capture = LogCapture(logging.WARNING)
+    log_capture.setFormatter(logging.Formatter("%(message)s"))
 
-    for handler in logger.handlers:
-        logger.removeHandler(handler)
+    for existing_handler in logger.handlers:
+        logger.removeHandler(existing_handler)
 
-    logger.addHandler(handler)
+    logger.addHandler(log_capture)
     logger.setLevel(logging.WARNING)
-    return handler
+    logger.propagate = False  # Don't propagate to root logger
+    return log_capture
 
 
 def validate_opds_publications(
