@@ -48,7 +48,7 @@ pre-commit = "^4.3.0"
 
 [tool.poetry.group.dev.dependencies]
 mypy = "^1.8.0"
-pytest = "^8.0.0"
+pytest = "^9.0.1"
 tox = "^4.0.0"
 types-pytz = "^2025.2.0.20251108"
 types-requests = "^2.32.4.20250913"
