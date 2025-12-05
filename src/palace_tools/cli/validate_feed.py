@@ -21,8 +21,7 @@ def validate[**P](
     *args: P.args,
     **kwargs: P.kwargs,
 ) -> None:
-    # disable logging, we don't want its output to clutter the validation output
-    logging.disable(logging.ERROR)
+    logging.basicConfig(level=logging.ERROR)
     results = validation_func(*args, **kwargs)
 
     if results:
@@ -50,6 +49,9 @@ def validate_opds2_odl(
     diff: bool = typer.Option(
         False, "--diff", "-d", help="Show a diff between the parsed and original JSON."
     ),
+    no_warnings: bool = typer.Option(
+        False, "--no-warnings", help="Disable capturing and displaying parser warnings."
+    ),
     url: str = typer.Argument(..., help="URL of feed", metavar="URL"),
     output_file: Path = typer.Argument(
         None,
@@ -69,6 +71,7 @@ def validate_opds2_odl(
         odl.Opds2OrOpds2WithOdlPublication,
         ignore,
         diff,
+        capture_warnings=not no_warnings,
     )
 
 
@@ -86,6 +89,9 @@ def validate_opds2(
     ),
     diff: bool = typer.Option(
         False, "--diff", "-d", help="Show a diff between the parsed and original JSON."
+    ),
+    no_warnings: bool = typer.Option(
+        False, "--no-warnings", help="Disable capturing and displaying parser warnings."
     ),
     url: str = typer.Argument(..., help="URL of feed", metavar="URL"),
     output_file: Path = typer.Argument(
@@ -106,6 +112,7 @@ def validate_opds2(
         opds2.Publication,
         ignore_errors=ignore,
         display_diff=diff,
+        capture_warnings=not no_warnings,
     )
 
 
@@ -118,6 +125,9 @@ def validate_opds2_file(
     ),
     diff: bool = typer.Option(
         False, "--diff", "-d", help="Show a diff between the parsed and original JSON."
+    ),
+    no_warnings: bool = typer.Option(
+        False, "--no-warnings", help="Disable capturing and displaying parser warnings."
     ),
     input_file: Path = typer.Argument(
         ...,
@@ -146,6 +156,7 @@ def validate_opds2_file(
         opds2.Publication,
         ignore_errors=ignore,
         display_diff=diff,
+        capture_warnings=not no_warnings,
     )
 
 
@@ -158,6 +169,9 @@ def validate_opds2_publications(
     ),
     diff: bool = typer.Option(
         False, "--diff", "-d", help="Show a diff between the parsed and original JSON."
+    ),
+    no_warnings: bool = typer.Option(
+        False, "--no-warnings", help="Disable capturing and displaying parser warnings."
     ),
     input_file: Path = typer.Argument(
         ...,
@@ -191,6 +205,7 @@ def validate_opds2_publications(
         opds2.Publication,
         ignore_errors=ignore,
         display_diff=diff,
+        capture_warnings=not no_warnings,
     )
 
 
