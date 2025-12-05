@@ -43,6 +43,66 @@ def _diff_original_parsed(
     )
 
 
+def validate_opds_publications(
+    publications: list[dict[str, Any]],
+    publication_cls: Any,
+    *,
+    url: str | None = None,
+    ignore_errors: list[str],
+    display_diff: bool,
+) -> list[str]:
+    publication_adapter = TypeAdapter(publication_cls)
+    errors = []
+    for publication_dict in publications:
+        try:
+            publication = publication_adapter.validate_python(publication_dict)
+
+            if display_diff:
+                diff = _diff_original_parsed(publication_dict, publication)
+                if diff:
+                    errors.append(f"Publication JSON differs from parsed model:")
+                    errors.append(f"  Identifier: {publication.metadata.identifier}")
+                    errors.append(
+                        "\n".join(textwrap.indent(line, "    ") for line in diff)
+                    )
+        except ValidationError as e:
+            if _should_ignore_error(e, ignore_errors):
+                continue
+
+            metadata_dict = publication_dict.get("metadata", {})
+
+            # Extract any information we can from metadata_dict, to help with error message
+            identifier = metadata_dict.get("identifier", "<unknown>")
+            title = metadata_dict.get("title", "<unknown>")
+            authors = metadata_dict.get("author", "<unknown>")
+
+            links = publication_dict.get("links", [])
+            self_url = next(
+                (
+                    link["href"]
+                    for link in links
+                    if link.get("rel") == "self" and link.get("href") is not None
+                ),
+                "<unknown>",
+            )
+
+            errors.append(f"Error validating publication.")
+            errors.append(f"  Identifier: {identifier}")
+            errors.append(f"  Title: {title!r}")
+            errors.append(f"  Author(s): {authors!r}")
+            if url:
+                errors.append(f"  Feed page: {url}")
+            errors.append(f"  Self URL: {self_url}")
+            errors.append(f"  Errors:")
+            errors.append(textwrap.indent(str(e), "    "))
+            errors.append(f"  Publication JSON:")
+            errors.append(
+                textwrap.indent(str(json.dumps(publication_dict, indent=2)), "    ")
+            )
+
+    return errors
+
+
 def validate_opds_feeds(
     feeds: dict[str, dict[str, Any]],
     publication_cls: Any,
@@ -50,7 +110,6 @@ def validate_opds_feeds(
     display_diff: bool,
 ) -> list[str]:
     errors = []
-    publication_adapter = TypeAdapter(publication_cls)
 
     for url, feed in feeds.items():
         try:
@@ -73,52 +132,14 @@ def validate_opds_feeds(
                 errors.append(textwrap.indent(str(e), "    "))
             continue
 
-        for publication_dict in publication_feed.publications:
-            try:
-                publication = publication_adapter.validate_python(publication_dict)
-
-                if display_diff:
-                    diff = _diff_original_parsed(publication_dict, publication)
-                    if diff:
-                        errors.append(f"Publication JSON differs from parsed model:")
-                        errors.append(
-                            f"  Identifier: {publication.metadata.identifier}"
-                        )
-                        errors.append(
-                            "\n".join(textwrap.indent(line, "    ") for line in diff)
-                        )
-            except ValidationError as e:
-                if _should_ignore_error(e, ignore_errors):
-                    continue
-
-                metadata_dict = publication_dict.get("metadata", {})
-
-                # Extract any information we can from metadata_dict, to help with error message
-                identifier = metadata_dict.get("identifier", "<unknown>")
-                title = metadata_dict.get("title", "<unknown>")
-                authors = metadata_dict.get("author", "<unknown>")
-
-                links = publication_dict.get("links", [])
-                self_url = next(
-                    (
-                        link["href"]
-                        for link in links
-                        if link.get("rel") == "self" and link.get("href") is not None
-                    ),
-                    "<unknown>",
-                )
-
-                errors.append(f"Error validating publication.")
-                errors.append(f"  Identifier: {identifier}")
-                errors.append(f"  Title: {title!r}")
-                errors.append(f"  Author(s): {authors!r}")
-                errors.append(f"  Feed page: {url}")
-                errors.append(f"  Self URL: {self_url}")
-                errors.append(f"  Errors:")
-                errors.append(textwrap.indent(str(e), "    "))
-                errors.append(f"  Publication JSON:")
-                errors.append(
-                    textwrap.indent(str(json.dumps(publication_dict, indent=2)), "    ")
-                )
+        errors.extend(
+            validate_opds_publications(
+                publication_feed.publications,
+                publication_cls,
+                url=url,
+                ignore_errors=ignore_errors,
+                display_diff=display_diff,
+            )
+        )
 
     return errors
