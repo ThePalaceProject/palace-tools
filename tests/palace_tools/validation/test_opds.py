@@ -105,7 +105,7 @@ class TestValidateOpdsPublications:
         )
 
         assert len(errors) > 0
-        assert any("Error validating publication" in e for e in errors)
+        assert any("Validation failed for publication" in e for e in errors)
         assert any("urn:isbn:invalid" in e for e in errors)
 
     def test_mixed_valid_invalid_publications(
@@ -256,7 +256,7 @@ class TestValidateOpdsFeeds:
         )
 
         assert len(errors) > 0
-        assert any("Error validating publication" in e for e in errors)
+        assert any("Validation failed for publication" in e for e in errors)
 
     def test_empty_feeds_dict(self) -> None:
         """Empty feeds dict should return no errors."""

@@ -1,4 +1,5 @@
 import json
+import logging
 import textwrap
 from difflib import context_diff
 from typing import Any
@@ -6,6 +7,11 @@ from typing import Any
 from pydantic import TypeAdapter, ValidationError
 
 from palace.manager.opds.opds2 import PublicationFeedNoValidation
+
+from palace_tools.utils.logging import LogCapture
+
+# Logger name for capturing OPDS parsing warnings
+OPDS_LOGGER_NAME = "palace.manager.opds"
 
 
 def _should_ignore_error(error: ValidationError, ignore_errors: list[str]) -> bool:
@@ -43,6 +49,78 @@ def _diff_original_parsed(
     )
 
 
+def _publication_issues(
+    publication_dict: dict[str, Any],
+    url: str | None,
+    *,
+    errors: str | None = None,
+    warnings: str | None = None,
+    diff: str | None = None,
+) -> list[str]:
+    issues = []
+    metadata_dict = publication_dict.get("metadata", {})
+
+    # Extract any information we can from metadata_dict, to help with error message
+    identifier = metadata_dict.get("identifier", "<unknown>")
+    title = metadata_dict.get("title", "<unknown>")
+    authors = metadata_dict.get("author", "<unknown>")
+
+    links = publication_dict.get("links", [])
+    self_url = next(
+        (
+            link["href"]
+            for link in links
+            if link.get("rel") == "self" and link.get("href") is not None
+        ),
+        "<unknown>",
+    )
+
+    issue_types = []
+
+    if errors:
+        issue_types.append("ERROR")
+    if warnings:
+        issue_types.append("WARNING")
+    if diff:
+        issue_types.append("DIFF")
+
+    issues.append(
+        f"Validation failed for publication. Issues: {', '.join(issue_types)}"
+    )
+    issues.append(f"  Identifier: {identifier}")
+    issues.append(f"  Title: {title!r}")
+    issues.append(f"  Author(s): {authors!r}")
+    if url:
+        issues.append(f"  Feed page: {url}")
+    issues.append(f"  Self URL: {self_url}")
+    if errors:
+        issues.append(f"  Errors:")
+        issues.append(textwrap.indent(errors, "    "))
+    if warnings:
+        issues.append(f"  Warnings:")
+        issues.append(textwrap.indent(warnings, "    "))
+    if diff:
+        issues.append(f"  Publication JSON differs from parsed model:")
+        issues.append(textwrap.indent(diff, "    "))
+    issues.append(f"  Publication JSON:")
+    issues.append(textwrap.indent(str(json.dumps(publication_dict, indent=2)), "    "))
+    return issues
+
+
+def _setup_log_capture() -> LogCapture:
+    logger = logging.getLogger(OPDS_LOGGER_NAME)
+    log_capture = LogCapture(logging.WARNING)
+    log_capture.setFormatter(logging.Formatter("%(message)s"))
+
+    for existing_handler in logger.handlers:
+        logger.removeHandler(existing_handler)
+
+    logger.addHandler(log_capture)
+    logger.setLevel(logging.WARNING)
+    logger.propagate = False  # Don't propagate to root logger
+    return log_capture
+
+
 def validate_opds_publications(
     publications: list[dict[str, Any]],
     publication_cls: Any,
@@ -50,55 +128,42 @@ def validate_opds_publications(
     url: str | None = None,
     ignore_errors: list[str],
     display_diff: bool,
+    capture_warnings: bool = True,
 ) -> list[str]:
     publication_adapter = TypeAdapter(publication_cls)
     errors = []
+
+    log_capture = _setup_log_capture() if capture_warnings else None
+
     for publication_dict in publications:
+        if log_capture:
+            log_capture.clear()
+
         try:
             publication = publication_adapter.validate_python(publication_dict)
 
+            # Check for captured warnings during parsing
+            warnings = "".join(log_capture.get_messages()) if log_capture else None
+
             if display_diff:
-                diff = _diff_original_parsed(publication_dict, publication)
-                if diff:
-                    errors.append(f"Publication JSON differs from parsed model:")
-                    errors.append(f"  Identifier: {publication.metadata.identifier}")
-                    errors.append(
-                        "\n".join(textwrap.indent(line, "    ") for line in diff)
+                diff = "\n".join(_diff_original_parsed(publication_dict, publication))
+            else:
+                diff = None
+
+            if diff or warnings:
+                errors.extend(
+                    _publication_issues(
+                        publication_dict,
+                        url,
+                        warnings=warnings,
+                        diff=diff,
                     )
+                )
         except ValidationError as e:
             if _should_ignore_error(e, ignore_errors):
                 continue
 
-            metadata_dict = publication_dict.get("metadata", {})
-
-            # Extract any information we can from metadata_dict, to help with error message
-            identifier = metadata_dict.get("identifier", "<unknown>")
-            title = metadata_dict.get("title", "<unknown>")
-            authors = metadata_dict.get("author", "<unknown>")
-
-            links = publication_dict.get("links", [])
-            self_url = next(
-                (
-                    link["href"]
-                    for link in links
-                    if link.get("rel") == "self" and link.get("href") is not None
-                ),
-                "<unknown>",
-            )
-
-            errors.append(f"Error validating publication.")
-            errors.append(f"  Identifier: {identifier}")
-            errors.append(f"  Title: {title!r}")
-            errors.append(f"  Author(s): {authors!r}")
-            if url:
-                errors.append(f"  Feed page: {url}")
-            errors.append(f"  Self URL: {self_url}")
-            errors.append(f"  Errors:")
-            errors.append(textwrap.indent(str(e), "    "))
-            errors.append(f"  Publication JSON:")
-            errors.append(
-                textwrap.indent(str(json.dumps(publication_dict, indent=2)), "    ")
-            )
+            errors.extend(_publication_issues(publication_dict, url, errors=str(e)))
 
     return errors
 
@@ -108,6 +173,7 @@ def validate_opds_feeds(
     publication_cls: Any,
     ignore_errors: list[str],
     display_diff: bool,
+    capture_warnings: bool = True,
 ) -> list[str]:
     errors = []
 
@@ -139,6 +205,7 @@ def validate_opds_feeds(
                 url=url,
                 ignore_errors=ignore_errors,
                 display_diff=display_diff,
+                capture_warnings=capture_warnings,
             )
         )
 
