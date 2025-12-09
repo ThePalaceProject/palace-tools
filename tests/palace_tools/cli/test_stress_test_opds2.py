@@ -58,13 +58,13 @@ class TestStressTestStats:
 
     def test_empty_stats(self) -> None:
         stats = StressTestStats()
-        assert stats.total_requests() == 0
-        assert stats.successful_requests() == 0
-        assert stats.failed_requests() == 0
-        assert stats.success_response_times().count == 0
-        assert stats.error_response_times().count == 0
-        assert len(stats.failed_results()) == 0
-        assert stats.failures_by_status() == {}
+        assert stats.total_requests == 0
+        assert stats.successful_requests == 0
+        assert stats.failed_requests == 0
+        assert stats.success_response_times.count == 0
+        assert stats.error_response_times.count == 0
+        assert len(stats.failed_results) == 0
+        assert stats.failures_by_status == {}
 
     def test_add_successful_result(self) -> None:
         stats = StressTestStats()
@@ -76,15 +76,15 @@ class TestStressTestStats:
         )
         stats.add_result(result)
 
-        assert stats.total_requests() == 1
-        assert stats.successful_requests() == 1
-        assert stats.failed_requests() == 0
-        success_times = stats.success_response_times()
+        assert stats.total_requests == 1
+        assert stats.successful_requests == 1
+        assert stats.failed_requests == 0
+        success_times = stats.success_response_times
         assert success_times.count == 1
         assert success_times.avg == 0.5
         assert success_times.min_val == 0.5
         assert success_times.max_val == 0.5
-        assert stats.error_response_times().count == 0
+        assert stats.error_response_times.count == 0
 
     def test_add_failed_result(self) -> None:
         stats = StressTestStats()
@@ -96,16 +96,16 @@ class TestStressTestStats:
         )
         stats.add_result(result)
 
-        assert stats.total_requests() == 1
-        assert stats.successful_requests() == 0
-        assert stats.failed_requests() == 1
-        assert stats.success_response_times().count == 0
-        error_times = stats.error_response_times()
+        assert stats.total_requests == 1
+        assert stats.successful_requests == 0
+        assert stats.failed_requests == 1
+        assert stats.success_response_times.count == 0
+        error_times = stats.error_response_times
         assert error_times.count == 1
         assert error_times.avg == 1.0
         assert error_times.min_val == 1.0
         assert error_times.max_val == 1.0
-        assert list(stats.failed_results()) == [result]
+        assert list(stats.failed_results) == [result]
 
     def test_mixed_results(self) -> None:
         stats = StressTestStats()
@@ -142,14 +142,14 @@ class TestStressTestStats:
             )
         )
 
-        assert stats.total_requests() == 4
-        assert stats.successful_requests() == 2
-        assert stats.failed_requests() == 2
-        success_times = stats.success_response_times()
+        assert stats.total_requests == 4
+        assert stats.successful_requests == 2
+        assert stats.failed_requests == 2
+        success_times = stats.success_response_times
         assert success_times.count == 2
         assert success_times.min_val == 0.1
         assert success_times.max_val == 0.2
-        error_times = stats.error_response_times()
+        error_times = stats.error_response_times
         assert error_times.count == 2
         assert error_times.min_val == 0.3
         assert error_times.max_val == 0.4
@@ -189,7 +189,7 @@ class TestStressTestStats:
             )
         )
 
-        failures = stats.failures_by_status()
+        failures = stats.failures_by_status
         assert failures == {500: 2, 404: 1}
 
     def test_total_duration(self) -> None:
@@ -197,7 +197,7 @@ class TestStressTestStats:
         stats.start_time = 100.0
         stats.end_time = 110.5
 
-        assert stats.total_duration() == 10.5
+        assert stats.total_duration == 10.5
 
     def test_full_harvests_counter(self) -> None:
         stats = StressTestStats()
@@ -222,10 +222,10 @@ class TestStressTestStats:
             )
 
         # Should have all 10 counted but only 5 stored
-        assert stats.failed_requests() == 10
-        assert len(stats.failed_results()) == 5
+        assert stats.failed_requests == 10
+        assert len(stats.failed_results) == 5
         # Should keep the most recent failures (5-9), not the first ones (0-4)
-        urls = [r.url for r in stats.failed_results()]
+        urls = [r.url for r in stats.failed_results]
         assert urls == [f"http://example.com/{i}" for i in range(5, 10)]
 
 
@@ -236,8 +236,8 @@ class TestResponseTimeStats:
         stats = ResponseTimeStats()
         assert stats.count == 0
         assert stats.avg == 0.0
-        assert stats.min_val == float("inf")
-        assert stats.max_val == float("-inf")
+        assert stats.min_val == 0.0
+        assert stats.max_val == 0.0
         assert stats.percentile(50) is None
         assert stats.percentile(99) is None
 
@@ -287,52 +287,6 @@ class TestResponseTimeStats:
         assert p99 is not None
         assert 98.0 <= p99 <= 100.0  # Should be around 99
 
-    def test_histogram_empty(self) -> None:
-        """Test histogram returns empty list for empty stats."""
-        stats = ResponseTimeStats()
-        assert stats.histogram() == []
-
-    def test_histogram_single_value(self) -> None:
-        """Test histogram with single value returns one bucket."""
-        stats = ResponseTimeStats()
-        stats.add(5.0)
-        histogram = stats.histogram()
-        assert len(histogram) == 1
-        assert histogram[0] == (5.0, 5.0, 1)
-
-    def test_histogram_with_data(self) -> None:
-        """Test histogram with fixed-width buckets shows distribution."""
-        stats = ResponseTimeStats()
-        # Add values clustered at the low end: many small, few large
-        for _ in range(80):
-            stats.add(1.0)  # 80 values at 1.0
-        for _ in range(20):
-            stats.add(10.0)  # 20 values at 10.0
-
-        histogram = stats.histogram(num_buckets=10)
-        assert len(histogram) == 10
-
-        # Total count should approximately equal input count
-        total_count = sum(count for _, _, count in histogram)
-        assert 95 <= total_count <= 105  # Allow some approximation error
-
-        # First bucket (1.0-1.9) should have most values
-        # Last bucket (9.1-10.0) should have some values
-        # Middle buckets should be mostly empty
-        first_bucket_count = histogram[0][2]
-        last_bucket_count = histogram[-1][2]
-        middle_counts = sum(count for _, _, count in histogram[1:-1])
-
-        assert first_bucket_count > middle_counts  # Most values in first bucket
-        assert last_bucket_count > 0  # Some values in last bucket
-
-        # Buckets should have fixed width and be contiguous
-        bucket_width = histogram[0][1] - histogram[0][0]
-        for i, (start, end, _) in enumerate(histogram):
-            expected_start = 1.0 + (i * bucket_width)
-            assert abs(start - expected_start) < 0.01
-            assert abs(end - start - bucket_width) < 0.01
-
     def test_merge(self) -> None:
         """Test merging two ResponseTimeStats (mutates self)."""
         stats1 = ResponseTimeStats()
@@ -360,6 +314,34 @@ class TestResponseTimeStats:
         stats1.merge(stats2)
         assert stats1.count == 1
         assert stats1.min_val == 1.0
+
+    def test_add(self) -> None:
+        """Test adding two ResponseTimeStats (returns new instance)."""
+        stats1 = ResponseTimeStats()
+        stats1.add(1.0)
+        stats1.add(2.0)
+
+        stats2 = ResponseTimeStats()
+        stats2.add(3.0)
+        stats2.add(4.0)
+
+        combined = stats1 + stats2
+
+        # Original stats should be unchanged
+        assert stats1.count == 2
+        assert stats2.count == 2
+
+        # Combined stats should have all values
+        assert combined.count == 4
+        assert combined.avg == 2.5
+        assert combined.min_val == 1.0
+        assert combined.max_val == 4.0
+
+    def test_add_returns_not_implemented(self) -> None:
+        """Test adding non-ResponseTimeStats returns NotImplemented."""
+        stats = ResponseTimeStats()
+        result = stats.__add__("not a stats object")
+        assert result is NotImplemented
 
 
 class TestGetNextUrl:
