@@ -226,32 +226,45 @@ class StressTestStats:
 
         console.print(Text(f"  {label}:", style="bold"))
         console.print(
-            Text("    Avg:    ", style="dim"),
+            Text("    Avg: ", style="dim"),
             Text(f"{times.avg * 1000:.0f}ms", style=style),
         )
-        if (median := times.percentile(50)) is not None:
+
+        # Build percentile ladder
+        percentiles = [
+            ("Min", times.min_val),
+            ("P50", times.percentile(50)),
+            ("P75", times.percentile(75)),
+            ("P90", times.percentile(90)),
+            ("P95", times.percentile(95)),
+            ("P99", times.percentile(99)),
+            ("Max", times.max_val),
+        ]
+
+        # Filter out None values and convert to ms
+        valid_percentiles = [
+            (name, val * 1000) for name, val in percentiles if val is not None
+        ]
+
+        if not valid_percentiles:
+            return
+
+        # Find max value for scaling bars
+        max_val = max(val for _, val in valid_percentiles)
+        bar_width = 40
+
+        console.print(Text("    Percentiles:", style="dim"))
+        for name, val in valid_percentiles:
+            # Scale bar length relative to max
+            bar_len = int((val / max_val) * bar_width) if max_val > 0 else 0
+            bar_len = max(1, bar_len)  # At least 1 char for visibility
+            bar = "█" * bar_len
+
             console.print(
-                Text("    Median: ", style="dim"),
-                Text(f"{median * 1000:.0f}ms", style=style),
+                Text(f"      {name:>3}: ", style="dim"),
+                Text(f"{val:>6.0f}ms ", style=style),
+                Text(bar, style=style),
             )
-        if (p90 := times.percentile(90)) is not None:
-            console.print(
-                Text("    P90:    ", style="dim"),
-                Text(f"{p90 * 1000:.0f}ms", style=style),
-            )
-        if (p99 := times.percentile(99)) is not None:
-            console.print(
-                Text("    P99:    ", style="dim"),
-                Text(f"{p99 * 1000:.0f}ms", style=style),
-            )
-        console.print(
-            Text("    Min:    ", style="dim"),
-            Text(f"{times.min_val * 1000:.0f}ms", style=style),
-        )
-        console.print(
-            Text("    Max:    ", style="dim"),
-            Text(f"{times.max_val * 1000:.0f}ms", style=style),
-        )
 
     def display(self, concurrency: int) -> None:
         duration = self.total_duration
