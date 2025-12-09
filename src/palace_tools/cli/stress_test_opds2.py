@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections import defaultdict
+from collections import defaultdict, deque
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from functools import cached_property
 from typing import Any, Self
 
 import httpx
@@ -71,72 +71,116 @@ class RequestResult:
     url: str
     status_code: int
     response_time: float
+    success: bool
     response_headers: dict[str, str] | None = None
     response_body: str | None = None
 
-    @cached_property
-    def success(self) -> bool:
-        return self.status_code == 200
+    MAX_BODY_LENGTH = 500
 
     @classmethod
     def from_response(cls, response: Response) -> Self:
+        """Create a RequestResult from a httpx Response.
+
+        Only stores headers and body for failed requests to save memory.
+        Body is truncated to MAX_BODY_LENGTH characters.
+        """
+        success = response.status_code == 200
+        if success:
+            body = None
+        else:
+            body = response.text
+            if len(body) > cls.MAX_BODY_LENGTH:
+                body = body[: cls.MAX_BODY_LENGTH] + "... [truncated]"
         return cls(
             url=str(response.url),
             status_code=response.status_code,
             response_time=response.elapsed.total_seconds(),
-            response_headers=dict(response.headers),
-            response_body=response.text,
+            success=success,
+            response_headers=None if success else dict(response.headers),
+            response_body=body,
         )
 
 
 @dataclass
+class RunningStats:
+    """Running statistics that can be updated incrementally without storing all values."""
+
+    count: int = 0
+    total: float = 0.0
+    min_val: float = float("inf")
+    max_val: float = float("-inf")
+
+    def add(self, value: float) -> None:
+        self.count += 1
+        self.total += value
+        self.min_val = min(self.min_val, value)
+        self.max_val = max(self.max_val, value)
+
+    @property
+    def avg(self) -> float:
+        return self.total / self.count if self.count > 0 else 0.0
+
+
+@dataclass
 class StressTestStats:
-    results: list[RequestResult] = field(default_factory=list)
+    # Keep only a limited number of recent failures for debugging
+    max_recent_failures: int = 50
+
+    # Running statistics instead of storing all results
+    _success_times: RunningStats = field(default_factory=RunningStats)
+    _error_times: RunningStats = field(default_factory=RunningStats)
+    _failures_by_status: defaultdict[int, int] = field(
+        default_factory=lambda: defaultdict(int)
+    )
+    _recent_failures: deque[RequestResult] = field(init=False)
+
     start_time: float = 0.0
     end_time: float = 0.0
     full_harvests: int = 0
 
+    def __post_init__(self) -> None:
+        self._recent_failures = deque(maxlen=self.max_recent_failures)
+
     def add_result(self, result: RequestResult) -> None:
-        self.results.append(result)
+        if result.success:
+            self._success_times.add(result.response_time)
+        else:
+            self._error_times.add(result.response_time)
+            self._failures_by_status[result.status_code] += 1
+            # deque with maxlen automatically evicts oldest entries
+            self._recent_failures.append(result)
 
     def total_requests(self) -> int:
-        return len(self.results)
+        return self._success_times.count + self._error_times.count
 
     def successful_requests(self) -> int:
-        return sum(1 for r in self.results if r.success)
+        return self._success_times.count
 
     def failed_requests(self) -> int:
-        return sum(1 for r in self.results if not r.success)
+        return self._error_times.count
 
-    def success_response_times(self) -> list[float]:
-        return [r.response_time for r in self.results if r.success]
+    def success_response_times(self) -> RunningStats:
+        return self._success_times
 
-    def error_response_times(self) -> list[float]:
-        return [r.response_time for r in self.results if not r.success]
+    def error_response_times(self) -> RunningStats:
+        return self._error_times
 
-    def failed_results(self) -> list[RequestResult]:
-        return [r for r in self.results if not r.success]
+    def failed_results(self) -> Sequence[RequestResult]:
+        return self._recent_failures
 
     def failures_by_status(self) -> dict[int, int]:
-        failures: defaultdict[int, int] = defaultdict(int)
-        for r in self.results:
-            if not r.success:
-                failures[r.status_code] += 1
-        return failures
+        return dict(self._failures_by_status)
 
     def total_duration(self) -> float:
         return self.end_time - self.start_time
 
     @staticmethod
-    def _format_timing_stats(times: list[float], label: str) -> None:
-        if times:
-            avg_time = sum(times) / len(times)
-            min_time = min(times)
-            max_time = max(times)
+    def _format_timing_stats(times: RunningStats, label: str) -> None:
+        if times.count > 0:
             print(f"  {label}:")
-            print(f"    Avg: {avg_time * 1000:.0f}ms")
-            print(f"    Min: {min_time * 1000:.0f}ms")
-            print(f"    Max: {max_time * 1000:.0f}ms")
+            print(f"    Avg: {times.avg * 1000:.0f}ms")
+            print(f"    Min: {times.min_val * 1000:.0f}ms")
+            print(f"    Max: {times.max_val * 1000:.0f}ms")
 
     def display(self, concurrency: int) -> None:
         duration = self.total_duration()
@@ -161,11 +205,7 @@ class StressTestStats:
                     for key, value in result.response_headers.items():
                         print(f"    {key}: {value}")
                 if result.response_body:
-                    # Truncate body if too long
-                    body = result.response_body
-                    if len(body) > 500:
-                        body = body[:500] + "... [truncated]"
-                    print(f"  Body: {body}")
+                    print(f"  Body: {result.response_body}")
 
         print("\nStress Test Results")
         print("===================")
@@ -181,7 +221,7 @@ class StressTestStats:
         self._format_timing_stats(success_times, "Successful requests")
 
         # Show timing stats for errors if there are any
-        if error_times:
+        if error_times.count > 0:
             self._format_timing_stats(error_times, "Failed requests")
 
         print("\nResults:")
@@ -268,7 +308,6 @@ async def run_stress_test(
 
                     for completed_task in done_requests:
                         response = await completed_task
-
                         result = RequestResult.from_response(response)
                         stats.add_result(result)
                         update_progress()
@@ -334,10 +373,16 @@ def stress_test(
         "-r",
         help="Maximum number of retries for failed requests",
     ),
+    max_failures: int = typer.Option(
+        50,
+        "--max-failures",
+        "-f",
+        help="Maximum number of recent failed requests to save for display",
+    ),
 ) -> None:
     """Stress test an OPDS2 feed by fetching it multiple times in parallel."""
     # Create stats outside async so it survives interruption
-    stats = StressTestStats()
+    stats = StressTestStats(max_recent_failures=max_failures)
     try:
         asyncio.run(
             run_stress_test(
