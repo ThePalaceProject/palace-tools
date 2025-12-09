@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from palace_tools.cli.stress_test_opds2 import (
     RequestResult,
-    RunningStats,
+    ResponseTimeStats,
     StressTestStats,
     get_next_url,
 )
@@ -229,36 +229,137 @@ class TestStressTestStats:
         assert urls == [f"http://example.com/{i}" for i in range(5, 10)]
 
 
-class TestRunningStats:
-    """Tests for RunningStats dataclass."""
+class TestResponseTimeStats:
+    """Tests for ResponseTimeStats class."""
 
     def test_empty_stats(self) -> None:
-        stats = RunningStats()
+        stats = ResponseTimeStats()
         assert stats.count == 0
-        assert stats.total == 0.0
         assert stats.avg == 0.0
         assert stats.min_val == float("inf")
         assert stats.max_val == float("-inf")
+        assert stats.percentile(50) is None
+        assert stats.percentile(99) is None
 
     def test_single_value(self) -> None:
-        stats = RunningStats()
+        stats = ResponseTimeStats()
         stats.add(5.0)
         assert stats.count == 1
-        assert stats.total == 5.0
         assert stats.avg == 5.0
         assert stats.min_val == 5.0
         assert stats.max_val == 5.0
+        # With a single value, percentiles should be approximately that value
+        # (DDSketch uses approximation with 1% relative error)
+        median = stats.percentile(50)
+        assert median is not None
+        assert 4.95 <= median <= 5.05
+        p99 = stats.percentile(99)
+        assert p99 is not None
+        assert 4.95 <= p99 <= 5.05
 
     def test_multiple_values(self) -> None:
-        stats = RunningStats()
+        stats = ResponseTimeStats()
         stats.add(1.0)
         stats.add(2.0)
         stats.add(3.0)
         assert stats.count == 3
-        assert stats.total == 6.0
         assert stats.avg == 2.0
         assert stats.min_val == 1.0
         assert stats.max_val == 3.0
+
+    def test_percentiles_with_many_values(self) -> None:
+        """Test percentile accuracy with enough data points."""
+        stats = ResponseTimeStats()
+        # Add 100 values from 1 to 100
+        for i in range(1, 101):
+            stats.add(float(i))
+
+        assert stats.count == 100
+        assert stats.min_val == 1.0
+        assert stats.max_val == 100.0
+
+        # Check percentiles are approximately correct (within 1% relative error)
+        median = stats.percentile(50)
+        assert median is not None
+        assert 49.5 <= median <= 51.5  # Should be around 50
+
+        p99 = stats.percentile(99)
+        assert p99 is not None
+        assert 98.0 <= p99 <= 100.0  # Should be around 99
+
+    def test_histogram_empty(self) -> None:
+        """Test histogram returns empty list for empty stats."""
+        stats = ResponseTimeStats()
+        assert stats.histogram() == []
+
+    def test_histogram_single_value(self) -> None:
+        """Test histogram with single value returns one bucket."""
+        stats = ResponseTimeStats()
+        stats.add(5.0)
+        histogram = stats.histogram()
+        assert len(histogram) == 1
+        assert histogram[0] == (5.0, 5.0, 1)
+
+    def test_histogram_with_data(self) -> None:
+        """Test histogram with fixed-width buckets shows distribution."""
+        stats = ResponseTimeStats()
+        # Add values clustered at the low end: many small, few large
+        for _ in range(80):
+            stats.add(1.0)  # 80 values at 1.0
+        for _ in range(20):
+            stats.add(10.0)  # 20 values at 10.0
+
+        histogram = stats.histogram(num_buckets=10)
+        assert len(histogram) == 10
+
+        # Total count should approximately equal input count
+        total_count = sum(count for _, _, count in histogram)
+        assert 95 <= total_count <= 105  # Allow some approximation error
+
+        # First bucket (1.0-1.9) should have most values
+        # Last bucket (9.1-10.0) should have some values
+        # Middle buckets should be mostly empty
+        first_bucket_count = histogram[0][2]
+        last_bucket_count = histogram[-1][2]
+        middle_counts = sum(count for _, _, count in histogram[1:-1])
+
+        assert first_bucket_count > middle_counts  # Most values in first bucket
+        assert last_bucket_count > 0  # Some values in last bucket
+
+        # Buckets should have fixed width and be contiguous
+        bucket_width = histogram[0][1] - histogram[0][0]
+        for i, (start, end, _) in enumerate(histogram):
+            expected_start = 1.0 + (i * bucket_width)
+            assert abs(start - expected_start) < 0.01
+            assert abs(end - start - bucket_width) < 0.01
+
+    def test_merge(self) -> None:
+        """Test merging two ResponseTimeStats (mutates self)."""
+        stats1 = ResponseTimeStats()
+        stats1.add(1.0)
+        stats1.add(2.0)
+
+        stats2 = ResponseTimeStats()
+        stats2.add(3.0)
+        stats2.add(4.0)
+
+        stats1.merge(stats2)
+
+        assert stats1.count == 4
+        assert stats1.avg == 2.5
+        assert stats1.min_val == 1.0
+        assert stats1.max_val == 4.0
+
+    def test_merge_empty(self) -> None:
+        """Test merging with empty stats."""
+        stats1 = ResponseTimeStats()
+        stats1.add(1.0)
+
+        stats2 = ResponseTimeStats()
+
+        stats1.merge(stats2)
+        assert stats1.count == 1
+        assert stats1.min_val == 1.0
 
 
 class TestGetNextUrl:

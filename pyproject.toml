@@ -29,6 +29,7 @@ readme = "README.md"
 version = "0"
 
 [tool.poetry.dependencies]
+ddsketch = "^3.0.1"
 httpx = "^0.28.1"
 mutagen = "^1.47.0"
 palace-manager = {git = "https://github.com/ThePalaceProject/circulation.git", branch = "main"}

@@ -9,6 +9,7 @@ from typing import Any, Self
 
 import httpx
 import typer
+from ddsketch import LogCollapsingLowestDenseDDSketch
 from httpx import Limits, Response, Timeout
 from rich.progress import (
     Progress,
@@ -101,24 +102,114 @@ class RequestResult:
         )
 
 
-@dataclass
-class RunningStats:
-    """Running statistics that can be updated incrementally without storing all values."""
+class ResponseTimeStats:
+    """Response time statistics using DDSketch for approximate percentiles.
 
-    count: int = 0
-    total: float = 0.0
-    min_val: float = float("inf")
-    max_val: float = float("-inf")
+    Uses LogCollapsingLowestDenseDDSketch which provides bounded memory usage
+    with relative error guarantees (default 1%) for quantile queries.
+    Min and max are tracked exactly since DDSketch only provides approximate values.
+    """
+
+    def __init__(self, relative_accuracy: float = 0.01, bin_limit: int = 2048) -> None:
+        self._sketch = LogCollapsingLowestDenseDDSketch(
+            relative_accuracy=relative_accuracy, bin_limit=bin_limit
+        )
+        self._min: float = float("inf")
+        self._max: float = float("-inf")
 
     def add(self, value: float) -> None:
-        self.count += 1
-        self.total += value
-        self.min_val = min(self.min_val, value)
-        self.max_val = max(self.max_val, value)
+        self._sketch.add(value)
+        self._min = min(self._min, value)
+        self._max = max(self._max, value)
+
+    @property
+    def count(self) -> int:
+        return int(self._sketch.count)
 
     @property
     def avg(self) -> float:
-        return self.total / self.count if self.count > 0 else 0.0
+        return self._sketch.avg if self.count > 0 else 0.0
+
+    @property
+    def min_val(self) -> float:
+        return self._min
+
+    @property
+    def max_val(self) -> float:
+        return self._max
+
+    def percentile(self, q: float) -> float | None:
+        """Return the q-th percentile (0-100 scale) or None if no data."""
+        if self.count == 0:
+            return None
+        return self._sketch.get_quantile_value(q / 100.0)
+
+    def histogram(self, num_buckets: int = 10) -> list[tuple[float, float, int]]:
+        """Generate histogram with fixed-width time buckets.
+
+        Returns a list of (bucket_start, bucket_end, count) tuples.
+        Buckets are evenly spaced between min and max values.
+        Counts are approximate, derived from percentile queries.
+        """
+        if self.count == 0:
+            return []
+
+        min_val = self._min
+        max_val = self._max
+
+        # Avoid division by zero if all values are the same
+        if min_val == max_val:
+            return [(min_val, max_val, self.count)]
+
+        bucket_width = (max_val - min_val) / num_buckets
+        buckets: list[tuple[float, float, int]] = []
+        total_count = self.count
+
+        for i in range(num_buckets):
+            bucket_start = min_val + (i * bucket_width)
+            bucket_end = min_val + ((i + 1) * bucket_width)
+
+            # Find what percentile range this bucket covers
+            # by querying where bucket boundaries fall in the distribution
+            start_pct = self._find_percentile_for_value(bucket_start)
+            end_pct = self._find_percentile_for_value(bucket_end)
+
+            # Estimate count from percentile difference
+            bucket_count = int((end_pct - start_pct) / 100.0 * total_count)
+            buckets.append((bucket_start, bucket_end, bucket_count))
+
+        return buckets
+
+    def _find_percentile_for_value(self, value: float) -> float:
+        """Binary search to find approximately what percentile a value represents."""
+        if self.count == 0:
+            return 0.0
+
+        # Handle edge cases
+        if value <= self._min:
+            return 0.0
+        if value >= self._max:
+            return 100.0
+
+        # Binary search for the percentile
+        low, high = 0.0, 100.0
+        for _ in range(20):  # ~6 decimal places of precision
+            mid = (low + high) / 2
+            mid_val = self.percentile(mid)
+            if mid_val is None:
+                break
+            if mid_val < value:
+                low = mid
+            else:
+                high = mid
+
+        return (low + high) / 2
+
+    def merge(self, other: ResponseTimeStats) -> None:
+        """Merge another ResponseTimeStats into this one (mutates self)."""
+        self._sketch.merge(other._sketch)
+        self._min = min(self._min, other._min)
+        self._max = max(self._max, other._max)
 
 
 @dataclass
@@ -127,8 +218,8 @@ class StressTestStats:
     max_recent_failures: int = 50
 
     # Running statistics instead of storing all results
-    _success_times: RunningStats = field(default_factory=RunningStats)
-    _error_times: RunningStats = field(default_factory=RunningStats)
+    _success_times: ResponseTimeStats = field(default_factory=ResponseTimeStats)
+    _error_times: ResponseTimeStats = field(default_factory=ResponseTimeStats)
     _failures_by_status: defaultdict[int, int] = field(
         default_factory=lambda: defaultdict(int)
     )
@@ -159,11 +250,18 @@ class StressTestStats:
     def failed_requests(self) -> int:
         return self._error_times.count
 
-    def success_response_times(self) -> RunningStats:
+    def success_response_times(self) -> ResponseTimeStats:
         return self._success_times
 
-    def error_response_times(self) -> RunningStats:
+    def error_response_times(self) -> ResponseTimeStats:
         return self._error_times
+
+    def all_response_times(self) -> ResponseTimeStats:
+        """Return combined stats for all requests (success + error)."""
+        combined = ResponseTimeStats()
+        combined.merge(self._success_times)
+        combined.merge(self._error_times)
+        return combined
 
     def failed_results(self) -> Sequence[RequestResult]:
         return self._recent_failures
@@ -175,18 +273,50 @@ class StressTestStats:
         return self.end_time - self.start_time
 
     @staticmethod
-    def _format_timing_stats(times: RunningStats, label: str) -> None:
+    def _format_timing_stats(times: ResponseTimeStats, label: str) -> None:
         if times.count > 0:
             print(f"  {label}:")
             print(f"    Avg: {times.avg * 1000:.0f}ms")
+            if (median := times.percentile(50)) is not None:
+                print(f"    Median: {median * 1000:.0f}ms")
+            if (p90 := times.percentile(90)) is not None:
+                print(f"    P90: {p90 * 1000:.0f}ms")
+            if (p99 := times.percentile(99)) is not None:
+                print(f"    P99: {p99 * 1000:.0f}ms")
             print(f"    Min: {times.min_val * 1000:.0f}ms")
             print(f"    Max: {times.max_val * 1000:.0f}ms")
+
+    @staticmethod
+    def _format_histogram(times: ResponseTimeStats, label: str) -> None:
+        """Print an ASCII histogram of response time distribution."""
+        if times.count == 0:
+            return
+
+        histogram = times.histogram(num_buckets=10)
+        if not histogram:
+            return
+
+        print(f"\n  {label} Distribution:")
+        max_count = max(count for _, _, count in histogram)
+        bar_width = 30
+
+        for lower, upper, count in histogram:
+            # Scale bar to max width
+            bar_len = int((count / max_count) * bar_width) if max_count > 0 else 0
+            bar = "#" * bar_len
+            # Format time range
+            lower_ms = lower * 1000
+            upper_ms = upper * 1000
+            print(
+                f"    {lower_ms:6.0f}-{upper_ms:6.0f}ms | {bar:<{bar_width}} | {count}"
+            )
 
     def display(self, concurrency: int) -> None:
         duration = self.total_duration()
         total = self.total_requests()
         successful = self.successful_requests()
         failed = self.failed_requests()
+        all_times = self.all_response_times()
         success_times = self.success_response_times()
         error_times = self.error_response_times()
         failed_results = self.failed_results()
@@ -217,8 +347,13 @@ class StressTestStats:
         if duration > 0:
             print(f"  Requests/second: {total / duration:.1f}")
 
-        # Show timing stats for successful requests
-        self._format_timing_stats(success_times, "Successful requests")
+        # Show timing stats for all requests
+        self._format_timing_stats(all_times, "All requests")
+        self._format_histogram(all_times, "All requests")
+
+        # Show timing stats for successful requests if there are also failures
+        if success_times.count > 0 and error_times.count > 0:
+            self._format_timing_stats(success_times, "Successful requests")
 
         # Show timing stats for errors if there are any
         if error_times.count > 0:
