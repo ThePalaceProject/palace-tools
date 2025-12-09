@@ -11,6 +11,7 @@ import httpx
 import typer
 from ddsketch import LogCollapsingLowestDenseDDSketch
 from httpx import Limits, Response, Timeout
+from rich.console import Console
 from rich.progress import (
     Progress,
     ProgressColumn,
@@ -19,6 +20,8 @@ from rich.progress import (
     TimeElapsedColumn,
 )
 from rich.text import Text
+
+console = Console()
 
 from palace_tools.utils.typer import run_typer_app_as_main
 
@@ -273,18 +276,32 @@ class StressTestStats:
         return self.end_time - self.start_time
 
     @staticmethod
-    def _format_timing_stats(times: ResponseTimeStats, label: str) -> None:
-        if times.count > 0:
-            print(f"  {label}:")
-            print(f"    Avg: {times.avg * 1000:.0f}ms")
-            if (median := times.percentile(50)) is not None:
-                print(f"    Median: {median * 1000:.0f}ms")
-            if (p90 := times.percentile(90)) is not None:
-                print(f"    P90: {p90 * 1000:.0f}ms")
-            if (p99 := times.percentile(99)) is not None:
-                print(f"    P99: {p99 * 1000:.0f}ms")
-            print(f"    Min: {times.min_val * 1000:.0f}ms")
-            print(f"    Max: {times.max_val * 1000:.0f}ms")
+    def _format_timing_stats(times: ResponseTimeStats, label: str, style: str) -> None:
+        if times.count == 0:
+            return
+
+        console.print(f"  [bold]{label}:[/bold]")
+        console.print(
+            f"    [dim]Avg:[/dim]    [{style}]{times.avg * 1000:.0f}ms[/{style}]"
+        )
+        if (median := times.percentile(50)) is not None:
+            console.print(
+                f"    [dim]Median:[/dim] [{style}]{median * 1000:.0f}ms[/{style}]"
+            )
+        if (p90 := times.percentile(90)) is not None:
+            console.print(
+                f"    [dim]P90:[/dim]    [{style}]{p90 * 1000:.0f}ms[/{style}]"
+            )
+        if (p99 := times.percentile(99)) is not None:
+            console.print(
+                f"    [dim]P99:[/dim]    [{style}]{p99 * 1000:.0f}ms[/{style}]"
+            )
+        console.print(
+            f"    [dim]Min:[/dim]    [{style}]{times.min_val * 1000:.0f}ms[/{style}]"
+        )
+        console.print(
+            f"    [dim]Max:[/dim]    [{style}]{times.max_val * 1000:.0f}ms[/{style}]"
+        )
 
     @staticmethod
     def _format_histogram(times: ResponseTimeStats, label: str) -> None:
@@ -296,19 +313,20 @@ class StressTestStats:
         if not histogram:
             return
 
-        print(f"\n  {label} Distribution:")
+        console.print(f"\n  [bold]{label} Distribution:[/bold]")
         max_count = max(count for _, _, count in histogram)
         bar_width = 30
 
         for lower, upper, count in histogram:
             # Scale bar to max width
             bar_len = int((count / max_count) * bar_width) if max_count > 0 else 0
-            bar = "#" * bar_len
+            bar = "[cyan]" + "█" * bar_len + "[/cyan]"
+            empty = " " * (bar_width - bar_len)
             # Format time range
             lower_ms = lower * 1000
             upper_ms = upper * 1000
-            print(
-                f"    {lower_ms:6.0f}-{upper_ms:6.0f}ms | {bar:<{bar_width}} | {count}"
+            console.print(
+                f"    [dim]{lower_ms:6.0f}-{upper_ms:6.0f}ms[/dim] │{bar}{empty}│ [green]{count}[/green]"
             )
 
     def display(self, concurrency: int) -> None:
@@ -323,53 +341,66 @@ class StressTestStats:
 
         # Print error details first if there are any
         if failed_results:
-            print("\nError Details")
-            print("=============")
+            console.print("\n[bold red]Error Details[/bold red]")
+            console.print("[red]=============[/red]")
             for i, result in enumerate(failed_results, 1):
-                print(f"\n[Error {i}]")
-                print(f"  URL: {result.url}")
-                print(f"  Status: {result.status_code}")
-                print(f"  Response time: {result.response_time * 1000:.0f}ms")
+                console.print(f"\n[bold red]\\[Error {i}][/bold red]")
+                console.print(f"  [dim]URL:[/dim] {result.url}")
+                console.print(f"  [dim]Status:[/dim] [red]{result.status_code}[/red]")
+                console.print(
+                    f"  [dim]Response time:[/dim] {result.response_time * 1000:.0f}ms"
+                )
                 if result.response_headers:
-                    print("  Headers:")
+                    console.print("  [dim]Headers:[/dim]")
                     for key, value in result.response_headers.items():
-                        print(f"    {key}: {value}")
+                        console.print(f"    [dim]{key}:[/dim] {value}")
                 if result.response_body:
-                    print(f"  Body: {result.response_body}")
+                    console.print(f"  [dim]Body:[/dim] {result.response_body}")
 
-        print("\nStress Test Results")
-        print("===================")
-        print(f"Concurrency: {concurrency}")
-        print(f"Full harvests: {self.full_harvests}")
+        console.print("\n[bold cyan]Stress Test Results[/bold cyan]")
+        console.print("[cyan]===================[/cyan]")
+        console.print(f"[dim]Concurrency:[/dim] [cyan]{concurrency}[/cyan]")
+        console.print(f"[dim]Full harvests:[/dim] [green]{self.full_harvests}[/green]")
 
-        print("\nTiming:")
-        print(f"  Total duration: {duration:.2f}s")
+        console.print("\n[bold]Timing:[/bold]")
+        console.print(
+            "  [dim]Total duration:[/dim] ", Text(f"{duration:.2f}s", style="cyan")
+        )
         if duration > 0:
-            print(f"  Requests/second: {total / duration:.1f}")
+            console.print(
+                "  [dim]Requests/second:[/dim] ",
+                Text(f"{total / duration:.1f}", style="cyan"),
+            )
 
         # Show timing stats for all requests
-        self._format_timing_stats(all_times, "All requests")
+        self._format_timing_stats(all_times, "All requests", "cyan")
         self._format_histogram(all_times, "All requests")
 
         # Show timing stats for successful requests if there are also failures
         if success_times.count > 0 and error_times.count > 0:
-            self._format_timing_stats(success_times, "Successful requests")
+            self._format_timing_stats(success_times, "Successful requests", "green")
 
         # Show timing stats for errors if there are any
         if error_times.count > 0:
-            self._format_timing_stats(error_times, "Failed requests")
+            self._format_timing_stats(error_times, "Failed requests", "red")
 
-        print("\nResults:")
-        print(f"  Total requests: {total}")
+        console.print("\n[bold]Results:[/bold]")
+        console.print(f"  [dim]Total requests:[/dim] {total}")
         if total > 0:
             success_pct = (successful / total) * 100
             fail_pct = (failed / total) * 100
-            print(f"  Successful: {successful} ({success_pct:.1f}%)")
-            print(f"  Failed: {failed} ({fail_pct:.1f}%)")
-
-            failures_by_status = self.failures_by_status()
-            for status, count in sorted(failures_by_status.items()):
-                print(f"    - {status}: {count}")
+            console.print(
+                f"  [dim]Successful:[/dim] [green]{successful}[/green] ({success_pct:.1f}%)"
+            )
+            if failed > 0:
+                console.print(
+                    f"  [dim]Failed:[/dim] [red]{failed}[/red] ({fail_pct:.1f}%)"
+                )
+                failures_by_status = self.failures_by_status()
+                for status, count in sorted(failures_by_status.items()):
+                    console.print(f"    [dim]-[/dim] [red]{status}[/red]: {count}")
+            else:
+                console.print(f"  [dim]Failed:[/dim] {failed} ({fail_pct:.1f}%)")
 
 
 def get_next_url(response_data: dict[str, Any]) -> str | None:
@@ -464,8 +495,8 @@ async def run_stress_test(
                             retries[response_url] += 1
                             if retries[response_url] > max_retries:
                                 # Exceeded max retries, test is over, report an error and exit
-                                print(
-                                    f"Max retries exceeded for {response_url}. Exiting stress test."
+                                console.print(
+                                    f"[bold red]Max retries exceeded for {response_url}. Exiting stress test.[/bold red]"
                                 )
                                 return
 
