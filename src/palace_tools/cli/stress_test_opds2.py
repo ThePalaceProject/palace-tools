@@ -21,9 +21,9 @@ from rich.progress import (
 )
 from rich.text import Text
 
-console = Console()
-
 from palace_tools.utils.typer import run_typer_app_as_main
+
+console = Console()
 
 
 class RequestsPerSecondColumn(ProgressColumn):
@@ -134,11 +134,16 @@ class ResponseTimeStats:
     def max_val(self) -> float:
         return self._sketch._max if self.count > 0 else 0.0
 
-    def percentile(self, q: float) -> float | None:
-        """Return the q-th percentile (0-100 scale) or None if no data."""
+    def percentile(self, percent: float) -> float | None:
+        """Return the value at the given percentile or None if no data.
+
+        :param percent: The percentile to retrieve, on a 0-100 scale.
+            For example, 50 for median, 99 for 99th percentile.
+        :returns: The approximate value at that percentile, or None if no data.
+        """
         if self.count == 0:
             return None
-        return self._sketch.get_quantile_value(q / 100.0)
+        return self._sketch.get_quantile_value(percent / 100.0)
 
     def merge(self, other: ResponseTimeStats) -> None:
         """Merge another ResponseTimeStats into this one (mutates self)."""
@@ -267,6 +272,18 @@ class StressTestStats:
             )
 
     def display(self, concurrency: int) -> None:
+        """Display the stress test results to the console.
+
+        Outputs a formatted summary including:
+
+        - Error details for any failed requests (up to max_recent_failures)
+        - Overall timing statistics with percentile ladder visualization
+        - Request counts and success/failure rates
+        - Breakdown of failures by HTTP status code
+
+        :param concurrency: The concurrency level used during the test,
+            displayed in the output for reference.
+        """
         duration = self.total_duration
         total = self.total_requests
         successful = self.successful_requests
