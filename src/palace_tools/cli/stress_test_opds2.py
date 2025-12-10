@@ -128,10 +128,18 @@ class ResponseTimeStats:
 
     @property
     def min_val(self) -> float:
+        # XXX: We access protected member _min here because DDSketch does not provide
+        #   a public method to get the minimum value. This is covered by the TestStressTestStats
+        #   unit tests, so if the DDSketch API changes, the tests will catch it.
+        #   We could use get_quantile_value(0.0), but that returns the calculated value
+        #   which is within 1% relative error, whereas _min is the exact minimum.
         return self._sketch._min if self.count > 0 else 0.0
 
     @property
     def max_val(self) -> float:
+        # XXX: We access protected member _max here because DDSketch does not provide
+        #   a public method to get the maximum value. Similar to min_val, this is covered
+        #   by unit tests.
         return self._sketch._max if self.count > 0 else 0.0
 
     def percentile(self, percent: float) -> float | None:
