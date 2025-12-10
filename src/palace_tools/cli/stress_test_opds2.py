@@ -2,14 +2,16 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections import defaultdict
+from collections import defaultdict, deque
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from functools import cached_property
 from typing import Any, Self
 
 import httpx
 import typer
+from ddsketch import LogCollapsingLowestDenseDDSketch
 from httpx import Limits, Response, Timeout
+from rich.console import Console
 from rich.progress import (
     Progress,
     ProgressColumn,
@@ -20,6 +22,8 @@ from rich.progress import (
 from rich.text import Text
 
 from palace_tools.utils.typer import run_typer_app_as_main
+
+console = Console()
 
 
 class RequestsPerSecondColumn(ProgressColumn):
@@ -39,7 +43,7 @@ class FailedCountColumn(ProgressColumn):
         self.stats = stats
 
     def render(self, task: Task) -> Text:
-        failed_requests = self.stats.failed_requests()
+        failed_requests = self.stats.failed_requests
         if failed_requests > 0:
             return Text(f"{failed_requests} failed", style="red bold")
         return Text("0 failed", style="dim")
@@ -71,130 +75,315 @@ class RequestResult:
     url: str
     status_code: int
     response_time: float
+    success: bool
     response_headers: dict[str, str] | None = None
     response_body: str | None = None
 
-    @cached_property
-    def success(self) -> bool:
-        return self.status_code == 200
+    MAX_BODY_LENGTH = 500
 
     @classmethod
     def from_response(cls, response: Response) -> Self:
+        """Create a RequestResult from a httpx Response.
+
+        Only stores headers and body for failed requests to save memory.
+        Body is truncated to MAX_BODY_LENGTH characters.
+        """
+        success = response.status_code == 200
+        if success:
+            body = None
+        else:
+            body = response.text
+            if len(body) > cls.MAX_BODY_LENGTH:
+                body = body[: cls.MAX_BODY_LENGTH] + "... [truncated]"
         return cls(
             url=str(response.url),
             status_code=response.status_code,
             response_time=response.elapsed.total_seconds(),
-            response_headers=dict(response.headers),
-            response_body=response.text,
+            success=success,
+            response_headers=None if success else dict(response.headers),
+            response_body=body,
         )
+
+
+class ResponseTimeStats:
+    """Response time statistics using DDSketch for approximate percentiles.
+
+    Uses LogCollapsingLowestDenseDDSketch which provides bounded memory usage
+    with relative error guarantees (default 1%) for quantile queries.
+    """
+
+    def __init__(self) -> None:
+        self._sketch = LogCollapsingLowestDenseDDSketch()
+
+    def add(self, value: float) -> None:
+        self._sketch.add(value)
+
+    @property
+    def count(self) -> int:
+        return int(self._sketch.count)
+
+    @property
+    def avg(self) -> float:
+        return self._sketch.avg if self.count > 0 else 0.0
+
+    @property
+    def min_val(self) -> float:
+        # XXX: We access protected member _min here because DDSketch does not provide
+        #   a public method to get the minimum value. This is covered by the TestStressTestStats
+        #   unit tests, so if the DDSketch API changes, the tests will catch it.
+        #   We could use get_quantile_value(0.0), but that returns the calculated value
+        #   which is within 1% relative error, whereas _min is the exact minimum.
+        return self._sketch._min if self.count > 0 else 0.0
+
+    @property
+    def max_val(self) -> float:
+        # XXX: We access protected member _max here because DDSketch does not provide
+        #   a public method to get the maximum value. Similar to min_val, this is covered
+        #   by unit tests.
+        return self._sketch._max if self.count > 0 else 0.0
+
+    def percentile(self, percent: float) -> float | None:
+        """Return the value at the given percentile or None if no data.
+
+        :param percent: The percentile to retrieve, on a 0-100 scale.
+            For example, 50 for median, 99 for 99th percentile.
+        :returns: The approximate value at that percentile, or None if no data.
+        """
+        if self.count == 0:
+            return None
+        return self._sketch.get_quantile_value(percent / 100.0)
+
+    def merge(self, other: ResponseTimeStats) -> None:
+        """Merge another ResponseTimeStats into this one (mutates self)."""
+        self._sketch.merge(other._sketch)
+
+    def __add__(self, other: Any) -> ResponseTimeStats:
+        if not isinstance(other, ResponseTimeStats):
+            return NotImplemented
+
+        combined = ResponseTimeStats()
+        combined.merge(self)
+        combined.merge(other)
+        return combined
 
 
 @dataclass
 class StressTestStats:
-    results: list[RequestResult] = field(default_factory=list)
+    # Keep only a limited number of recent failures for debugging
+    max_recent_failures: int = 50
+
+    # Running statistics
+    _success_times: ResponseTimeStats = field(default_factory=ResponseTimeStats)
+    _error_times: ResponseTimeStats = field(default_factory=ResponseTimeStats)
+    _failures_by_status: defaultdict[int, int] = field(
+        default_factory=lambda: defaultdict(int)
+    )
+    _recent_failures: deque[RequestResult] = field(init=False)
+
     start_time: float = 0.0
     end_time: float = 0.0
     full_harvests: int = 0
 
+    def __post_init__(self) -> None:
+        self._recent_failures = deque(maxlen=self.max_recent_failures)
+
     def add_result(self, result: RequestResult) -> None:
-        self.results.append(result)
+        if result.success:
+            self._success_times.add(result.response_time)
+        else:
+            self._error_times.add(result.response_time)
+            self._failures_by_status[result.status_code] += 1
+            self._recent_failures.append(result)
 
+    @property
     def total_requests(self) -> int:
-        return len(self.results)
+        return self.successful_requests + self.failed_requests
 
+    @property
     def successful_requests(self) -> int:
-        return sum(1 for r in self.results if r.success)
+        return self.success_response_times.count
 
+    @property
     def failed_requests(self) -> int:
-        return sum(1 for r in self.results if not r.success)
+        return self.error_response_times.count
 
-    def success_response_times(self) -> list[float]:
-        return [r.response_time for r in self.results if r.success]
+    @property
+    def success_response_times(self) -> ResponseTimeStats:
+        return self._success_times
 
-    def error_response_times(self) -> list[float]:
-        return [r.response_time for r in self.results if not r.success]
+    @property
+    def error_response_times(self) -> ResponseTimeStats:
+        return self._error_times
 
-    def failed_results(self) -> list[RequestResult]:
-        return [r for r in self.results if not r.success]
+    @property
+    def all_response_times(self) -> ResponseTimeStats:
+        """Return combined stats for all requests (success + error)."""
+        return self.success_response_times + self.error_response_times
 
+    @property
+    def failed_results(self) -> Sequence[RequestResult]:
+        return self._recent_failures
+
+    @property
     def failures_by_status(self) -> dict[int, int]:
-        failures: defaultdict[int, int] = defaultdict(int)
-        for r in self.results:
-            if not r.success:
-                failures[r.status_code] += 1
-        return failures
+        return dict(self._failures_by_status)
 
+    @property
     def total_duration(self) -> float:
         return self.end_time - self.start_time
 
     @staticmethod
-    def _format_timing_stats(times: list[float], label: str) -> None:
-        if times:
-            avg_time = sum(times) / len(times)
-            min_time = min(times)
-            max_time = max(times)
-            print(f"  {label}:")
-            print(f"    Avg: {avg_time * 1000:.0f}ms")
-            print(f"    Min: {min_time * 1000:.0f}ms")
-            print(f"    Max: {max_time * 1000:.0f}ms")
+    def _format_timing_stats(times: ResponseTimeStats, label: str, style: str) -> None:
+        if times.count == 0:
+            return
+
+        console.print(Text(f"  {label}:", style="bold"))
+        console.print(
+            Text("    Avg: ", style="dim"),
+            Text(f"{times.avg * 1000:.0f}ms", style=style),
+        )
+
+        # Build percentile ladder
+        percentiles = [
+            ("Min", times.min_val),
+            ("P50", times.percentile(50)),
+            ("P75", times.percentile(75)),
+            ("P90", times.percentile(90)),
+            ("P95", times.percentile(95)),
+            ("P99", times.percentile(99)),
+            ("Max", times.max_val),
+        ]
+
+        # Filter out None values and convert to ms
+        valid_percentiles = [
+            (name, val * 1000) for name, val in percentiles if val is not None
+        ]
+
+        if not valid_percentiles:
+            return
+
+        # Find max value for scaling bars
+        max_val = max(val for _, val in valid_percentiles)
+        bar_width = 40
+
+        console.print(Text("    Percentiles:", style="dim"))
+        for name, val in valid_percentiles:
+            # Scale bar length relative to max
+            bar_len = int((val / max_val) * bar_width) if max_val > 0 else 0
+            bar_len = max(1, bar_len)  # At least 1 char for visibility
+            bar = "█" * bar_len
+
+            console.print(
+                Text(f"      {name:>3}: ", style="dim"),
+                Text(f"{val:>6.0f}ms ", style=style),
+                Text(bar, style=style),
+            )
 
     def display(self, concurrency: int) -> None:
-        duration = self.total_duration()
-        total = self.total_requests()
-        successful = self.successful_requests()
-        failed = self.failed_requests()
-        success_times = self.success_response_times()
-        error_times = self.error_response_times()
-        failed_results = self.failed_results()
+        """Display the stress test results to the console.
+
+        Outputs a formatted summary including:
+
+        - Error details for any failed requests (up to max_recent_failures)
+        - Overall timing statistics with percentile ladder visualization
+        - Request counts and success/failure rates
+        - Breakdown of failures by HTTP status code
+
+        :param concurrency: The concurrency level used during the test,
+            displayed in the output for reference.
+        """
+        duration = self.total_duration
+        total = self.total_requests
+        successful = self.successful_requests
+        failed = self.failed_requests
+        all_times = self.all_response_times
+        success_times = self.success_response_times
+        error_times = self.error_response_times
+        failed_results = self.failed_results
 
         # Print error details first if there are any
         if failed_results:
-            print("\nError Details")
-            print("=============")
+            console.print(Text("\nError Details", style="bold red"))
+            console.print(Text("=============", style="red"))
             for i, result in enumerate(failed_results, 1):
-                print(f"\n[Error {i}]")
-                print(f"  URL: {result.url}")
-                print(f"  Status: {result.status_code}")
-                print(f"  Response time: {result.response_time * 1000:.0f}ms")
+                console.print(Text(f"\n[Error {i}]", style="bold red"))
+                console.print(Text("  URL: ", style="dim"), Text(result.url))
+                console.print(
+                    Text("  Status: ", style="dim"),
+                    Text(str(result.status_code), style="red"),
+                )
+                console.print(
+                    Text("  Response time: ", style="dim"),
+                    Text(f"{result.response_time * 1000:.0f}ms"),
+                )
                 if result.response_headers:
-                    print("  Headers:")
+                    console.print(Text("  Headers:", style="dim"))
                     for key, value in result.response_headers.items():
-                        print(f"    {key}: {value}")
+                        console.print(Text(f"    {key}: ", style="dim"), Text(value))
                 if result.response_body:
-                    # Truncate body if too long
-                    body = result.response_body
-                    if len(body) > 500:
-                        body = body[:500] + "... [truncated]"
-                    print(f"  Body: {body}")
+                    console.print(
+                        Text("  Body: ", style="dim"), Text(result.response_body)
+                    )
 
-        print("\nStress Test Results")
-        print("===================")
-        print(f"Concurrency: {concurrency}")
-        print(f"Full harvests: {self.full_harvests}")
+        console.print(Text("\nStress Test Results", style="bold cyan"))
+        console.print(Text("===================", style="cyan"))
+        console.print(
+            Text("Concurrency: ", style="dim"), Text(str(concurrency), style="cyan")
+        )
+        console.print(
+            Text("Full harvests: ", style="dim"),
+            Text(str(self.full_harvests), style="green"),
+        )
 
-        print("\nTiming:")
-        print(f"  Total duration: {duration:.2f}s")
+        console.print(Text("\nTiming:", style="bold"))
+        console.print(
+            Text("  Total duration: ", style="dim"),
+            Text(f"{duration:.2f}s", style="cyan"),
+        )
         if duration > 0:
-            print(f"  Requests/second: {total / duration:.1f}")
+            console.print(
+                Text("  Requests/second: ", style="dim"),
+                Text(f"{total / duration:.1f}", style="cyan"),
+            )
 
-        # Show timing stats for successful requests
-        self._format_timing_stats(success_times, "Successful requests")
+        # Show timing stats for all requests
+        self._format_timing_stats(all_times, "All requests", "cyan")
+
+        # Show timing stats for successful requests if there are also failures
+        if success_times.count > 0 and error_times.count > 0:
+            self._format_timing_stats(success_times, "Successful requests", "green")
 
         # Show timing stats for errors if there are any
-        if error_times:
-            self._format_timing_stats(error_times, "Failed requests")
+        if error_times.count > 0:
+            self._format_timing_stats(error_times, "Failed requests", "red")
 
-        print("\nResults:")
-        print(f"  Total requests: {total}")
+        console.print(Text("\nResults:", style="bold"))
+        console.print(Text("  Total requests: ", style="dim"), Text(str(total)))
         if total > 0:
             success_pct = (successful / total) * 100
             fail_pct = (failed / total) * 100
-            print(f"  Successful: {successful} ({success_pct:.1f}%)")
-            print(f"  Failed: {failed} ({fail_pct:.1f}%)")
-
-            failures_by_status = self.failures_by_status()
-            for status, count in sorted(failures_by_status.items()):
-                print(f"    - {status}: {count}")
+            console.print(
+                Text("  Successful: ", style="dim"),
+                Text(f"{successful}", style="green"),
+                Text(f" ({success_pct:.1f}%)"),
+            )
+            if failed > 0:
+                console.print(
+                    Text("  Failed: ", style="dim"),
+                    Text(f"{failed}", style="red"),
+                    Text(f" ({fail_pct:.1f}%)"),
+                )
+                failures_by_status = self.failures_by_status
+                for status, count in sorted(failures_by_status.items()):
+                    console.print(
+                        Text("    - ", style="dim"),
+                        Text(str(status), style="red"),
+                        Text(f": {count}"),
+                    )
+            else:
+                console.print(
+                    Text("  Failed: ", style="dim"), Text(f"{failed} ({fail_pct:.1f}%)")
+                )
 
 
 def get_next_url(response_data: dict[str, Any]) -> str | None:
@@ -252,7 +441,7 @@ async def run_stress_test(
 
             def update_progress() -> None:
                 """Update all progress indicators."""
-                progress.update(requests_task, completed=stats.total_requests())
+                progress.update(requests_task, completed=stats.total_requests)
 
             try:
                 while True:
@@ -268,7 +457,6 @@ async def run_stress_test(
 
                     for completed_task in done_requests:
                         response = await completed_task
-
                         result = RequestResult.from_response(response)
                         stats.add_result(result)
                         update_progress()
@@ -290,8 +478,8 @@ async def run_stress_test(
                             retries[response_url] += 1
                             if retries[response_url] > max_retries:
                                 # Exceeded max retries, test is over, report an error and exit
-                                print(
-                                    f"Max retries exceeded for {response_url}. Exiting stress test."
+                                console.print(
+                                    f"[bold red]Max retries exceeded for {response_url}. Exiting stress test.[/bold red]"
                                 )
                                 return
 
@@ -334,10 +522,16 @@ def stress_test(
         "-r",
         help="Maximum number of retries for failed requests",
     ),
+    max_failures: int = typer.Option(
+        50,
+        "--max-failures",
+        "-f",
+        help="Maximum number of recent failed requests to save for display",
+    ),
 ) -> None:
     """Stress test an OPDS2 feed by fetching it multiple times in parallel."""
     # Create stats outside async so it survives interruption
-    stats = StressTestStats()
+    stats = StressTestStats(max_recent_failures=max_failures)
     try:
         asyncio.run(
             run_stress_test(
