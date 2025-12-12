@@ -218,12 +218,6 @@ def create_patron_auth_service(
             error_msg += f"\n\nStack trace:\n{traceback.format_exc()}"
         typer.echo(error_msg, err=True)
         raise typer.Exit(1)
-    except Exception as e:
-        error_msg = f"❌ Unexpected error: {e}"
-        if verbose:
-            error_msg += f"\n\nStack trace:\n{traceback.format_exc()}"
-        typer.echo(error_msg, err=True)
-        raise typer.Exit(1)
 
 
 def main() -> None:
