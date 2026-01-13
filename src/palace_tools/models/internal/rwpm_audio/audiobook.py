@@ -82,7 +82,7 @@ class Audiobook:
                     sub_entries=self.generate_enhanced_toc(
                         toc=entry.children, depth=depth + 1
                     ),
-                    **entry.dict(),
+                    **entry.model_dump(),
                 )
                 for entry in toc
             ]
