@@ -16,7 +16,7 @@ else:
 class ToCEntry(BaseModel):
     href: str
     title: str
-    children: ToCEntries | None = None
+    children: Sequence[ToCEntry] | None = None
     # Computed properties.
     track_href: str = ""
     track_offset: int = 0
@@ -86,7 +86,7 @@ class Manifest(BaseModel):
     metadata: ManifestMetadata
     # TODO: links property
     reading_order: list[AudioTrack] = Field(..., alias="readingOrder")
-    toc: ToCEntries | None = None
+    toc: Sequence[ToCEntry] | None = None
 
     @model_validator(mode="after")
     def validate_model(self) -> Self:
