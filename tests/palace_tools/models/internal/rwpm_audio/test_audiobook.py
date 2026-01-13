@@ -17,6 +17,7 @@ from palace_tools.models.internal.rwpm_audio.audiobook import (
     Audiobook,
     EnhancedToCEntry,
 )
+from tests.fixtures.file import FixtureFile
 
 
 class AudiobookFixture:
@@ -516,3 +517,28 @@ class TestAudiobook:
         entries = list(audiobook.toc_in_playback_order)
         assert len(entries) == 1
         assert entries[0].title == "Chapter 1"
+
+    def test_from_manifest_file(self, file_fixture: FixtureFile) -> None:
+        """from_manifest_file should load an audiobook from a manifest file."""
+        manifest_path = file_fixture("manifest.json")
+        audiobook = Audiobook.from_manifest_file(manifest_path)
+
+        # Verify the audiobook was created with the correct manifest
+        assert audiobook.manifest.metadata.title == "Dungeon Crawler Carl"
+        assert audiobook.manifest.metadata.identifier == "urn:isbn:9798350430943"
+        assert audiobook.manifest.metadata.duration == 48702
+
+        # Verify reading order was loaded
+        assert len(audiobook.manifest.reading_order) == 50
+
+        # Verify ToC was loaded
+        toc_entries = list(audiobook.toc_in_playback_order)
+        assert len(toc_entries) == 52
+        assert toc_entries[0].title == "Opening Credits"
+        assert toc_entries[1].title == "Chapter 1"
+
+        # Verify enhanced ToC is generated
+        enhanced_toc = audiobook.enhanced_toc
+        assert len(enhanced_toc) == 52
+        assert enhanced_toc[0].title == "Opening Credits"
+        assert enhanced_toc[0].depth == 0
