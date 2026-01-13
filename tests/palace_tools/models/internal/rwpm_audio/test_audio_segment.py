@@ -1,5 +1,7 @@
 """Tests for audio_segment module."""
 
+from collections.abc import Generator
+
 import pytest
 
 from palace_tools.models.api.rwpm_audiobook import AudioTrack, ToCEntry
@@ -383,11 +385,12 @@ class TestAudioSegmentsForAllTocEntries:
         # The function will raise ValueError if entry is None
         with pytest.raises(ValueError, match="ToC entry cannot be None"):
             # Create a generator that yields None
-            def none_generator():
+            def none_generator() -> Generator[None, None, None]:
                 yield None
 
             list(
                 audio_segments_for_all_toc_entries(
-                    all_toc_entries=none_generator(), all_tracks=[track]
+                    all_toc_entries=none_generator(),  # type: ignore[arg-type]
+                    all_tracks=[track],
                 )
             )
