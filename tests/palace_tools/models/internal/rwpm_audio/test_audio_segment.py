@@ -390,6 +390,7 @@ class TestAudioSegmentsForAllTocEntries:
 
             list(
                 audio_segments_for_all_toc_entries(
+                    # Intentionally pass wrong type to test error handling
                     all_toc_entries=none_generator(),  # type: ignore[arg-type]
                     all_tracks=[track],
                 )
