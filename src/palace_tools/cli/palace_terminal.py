@@ -303,7 +303,7 @@ class PalaceMediaPlayer:
         if not manifest_file.exists():
             raise FileNotFoundError(f"File {manifest_file} does not exist")
 
-        self.manifest = Manifest.parse_file(manifest_file)
+        self.manifest = Manifest.model_validate_json(manifest_file.read_bytes())
         self.tracks = Tracks(self.manifest)
 
         self.instance = vlc.Instance()
