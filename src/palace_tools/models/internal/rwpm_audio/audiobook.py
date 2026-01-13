@@ -135,9 +135,8 @@ class Audiobook:
 
     @classmethod
     def from_manifest_file(cls, filepath: Path | str) -> Self:
-        directory_path = Path(filepath).parent
-        if not isinstance(filepath, Path):
-            filepath = Path(filepath)
+        filepath = Path(filepath)
+        directory_path = filepath.parent
         manifest = Manifest.model_validate_json(filepath.read_bytes())
         for track in manifest.reading_order:
             # Try to load the track

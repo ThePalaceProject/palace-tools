@@ -542,3 +542,29 @@ class TestAudiobook:
         assert len(enhanced_toc) == 52
         assert enhanced_toc[0].title == "Opening Credits"
         assert enhanced_toc[0].depth == 0
+
+    def test_from_manifest_file_with_str_path(self, file_fixture: FixtureFile) -> None:
+        """from_manifest_file should accept both Path and str arguments."""
+        manifest_path = file_fixture("manifest.json")
+
+        # Test with str argument
+        audiobook_from_str = Audiobook.from_manifest_file(str(manifest_path))
+
+        # Verify the audiobook was created correctly
+        assert audiobook_from_str.manifest.metadata.title == "Dungeon Crawler Carl"
+        assert (
+            audiobook_from_str.manifest.metadata.identifier == "urn:isbn:9798350430943"
+        )
+
+        # Test with Path argument
+        audiobook_from_path = Audiobook.from_manifest_file(manifest_path)
+
+        # Both should produce the same result
+        assert (
+            audiobook_from_str.manifest.metadata.title
+            == audiobook_from_path.manifest.metadata.title
+        )
+        assert (
+            audiobook_from_str.manifest.metadata.duration
+            == audiobook_from_path.manifest.metadata.duration
+        )
