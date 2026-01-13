@@ -42,6 +42,15 @@ class EnhancedToCEntry(ToCEntry):
             yield from child.enhanced_toc_in_playback_order
 
 
+# Import needed for model_rebuild() to resolve inherited 'children' field type annotation.
+# EnhancedToCEntry inherits from ToCEntry, which has a field 'children: ToCEntries | None'.
+# When model_rebuild() is called, Pydantic needs ToCEntries in scope to resolve this type.
+from palace_tools.models.api.rwpm_audiobook import ToCEntries  # noqa: F401
+
+# Rebuild the model to resolve the self-reference in sub_entries
+EnhancedToCEntry.model_rebuild()
+
+
 @dataclass(frozen=True)
 class Audiobook:
     manifest: Manifest
