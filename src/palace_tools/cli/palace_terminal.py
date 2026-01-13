@@ -313,7 +313,7 @@ class PalaceMediaPlayer:
         self.media_list = self.instance.media_list_new()
 
         for idx, entry in enumerate(self.tracks):
-            media_file = manifest_file.parent / entry.href
+            media_file = f"file://{manifest_file.parent / entry.href}"
             media = self.instance.media_new(media_file)
             media.parse()
             entry.duration_ms = media.get_duration()
