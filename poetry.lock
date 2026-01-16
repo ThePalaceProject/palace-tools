@@ -4703,14 +4703,14 @@ files = [
 
 [[package]]
 name = "types-xmltodict"
-version = "1.0.1.20250920"
+version = "1.0.1.20260113"
 description = "Typing stubs for xmltodict"
 optional = false
 python-versions = ">=3.9"
 groups = ["dev"]
 files = [
-    {file = "types_xmltodict-1.0.1.20250920-py3-none-any.whl", hash = "sha256:2acd1bd50e226f4939507165e5bbbd3a3f69718439ba31c142755ce353343ff3"},
-    {file = "types_xmltodict-1.0.1.20250920.tar.gz", hash = "sha256:3a2a97b7c3247251d715452e7bd86b9f0567fb91e407164344c93390d9bbbe88"},
+    {file = "types_xmltodict-1.0.1.20260113-py3-none-any.whl", hash = "sha256:01a79b2f979aaf91d90982cdd878768ea9571866e7a2d50e82f9a4998e2d5d00"},
+    {file = "types_xmltodict-1.0.1.20260113.tar.gz", hash = "sha256:d19ecffd2cf84956107432b0ef0d688dd606249dedfbcd16c66cec8357a95d97"},
 ]
 
 [[package]]
