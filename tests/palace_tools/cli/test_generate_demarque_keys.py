@@ -122,6 +122,10 @@ class TestGenerateDemarqueKeys:
         assert private_key["crv"] == "Ed25519"
         assert "d" in private_key  # Private component should be present
 
+        # Verify file permissions are 600 (owner read/write only)
+        file_mode = private_key_file.stat().st_mode & 0o777
+        assert file_mode == 0o600
+
         # Verify confirmation message
         assert f"Private key written to: {private_key_file}" in result.output
 

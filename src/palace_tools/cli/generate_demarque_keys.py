@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import stat
 import uuid
 from pathlib import Path
 
@@ -74,6 +75,7 @@ def command(
     # Output private key
     if private_key_file is not None:
         private_key_file.write_text(private_key_json)
+        private_key_file.chmod(stat.S_IRUSR | stat.S_IWUSR)  # 600
         typer.echo(f"Private key written to: {private_key_file}")
     else:
         typer.echo("=== PRIVATE KEY ===")
