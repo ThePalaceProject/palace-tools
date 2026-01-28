@@ -6,6 +6,7 @@ import sys
 from base64 import b64encode
 from collections.abc import Callable, Generator, Mapping
 from enum import Enum
+from json import JSONDecodeError
 from pathlib import Path
 from typing import Any, NamedTuple, TextIO
 
@@ -172,7 +173,11 @@ def make_request(session: httpx.Client, url: str, retries: int = 0) -> dict[str,
             print(f"Retrying... ({retries + 1}/3)")
             return make_request(session, url, retries + 1)
         error_and_exit(response)
-    return response.json()  # type: ignore[no-any-return]
+    try:
+        return response.json()  # type: ignore[no-any-return]
+    except JSONDecodeError as e:
+        error_and_exit(response, str(e))
+        raise
 
 
 def write_json(file: TextIO, data: list[dict[str, Any]]) -> None:
