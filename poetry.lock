@@ -4609,14 +4609,14 @@ tests = ["numpy", "pytest"]
 
 [[package]]
 name = "textual"
-version = "7.3.0"
+version = "8.0.0"
 description = "Modern Text User Interface framework"
 optional = false
 python-versions = "<4.0,>=3.9"
 groups = ["main"]
 files = [
-    {file = "textual-7.3.0-py3-none-any.whl", hash = "sha256:db235cecf969c87fe5a9c04d83595f506affc9db81f3a53ab849534d726d330a"},
-    {file = "textual-7.3.0.tar.gz", hash = "sha256:3169e8ba5518a979b0771e60be380ab1a6c344f30a2126e360e6f38d009a3de4"},
+    {file = "textual-8.0.0-py3-none-any.whl", hash = "sha256:8908f4ebe93a6b4f77ca7262197784a52162bc88b05f4ecf50ac93a92d49bb8f"},
+    {file = "textual-8.0.0.tar.gz", hash = "sha256:ce48f83a3d686c0fac0e80bf9136e1f8851c653aa6a4502e43293a151df18809"},
 ]
 
 [package.dependencies]
@@ -5224,4 +5224,4 @@ test = ["pytest", "pytest-cov"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<4"
-content-hash = "358617231543b10f62429c05c90deadfcdfbbf3a093aafcd395d4a551e2ba82b"
+content-hash = "cff9683330ebde851e05a3720e83da02f93d3efc5f1aa673b9a33eaa9c535040"
