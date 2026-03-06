@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import datetime
 
-import pytz
-
 
 def seconds_to_hms(seconds: int | float) -> str:
     """Converts the given number of seconds to a string of format HH:MM:SS."""
@@ -21,4 +19,4 @@ def utc_now() -> datetime.datetime:
 
     :return: datetime object
     """
-    return datetime.datetime.now(tz=pytz.UTC)
+    return datetime.datetime.now(tz=datetime.timezone.utc)
