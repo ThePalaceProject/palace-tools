@@ -24,24 +24,29 @@ description = "Palace Tools"
 homepage = "https://thepalaceproject.org"
 license = "Apache-2.0"
 name = "palace-tools"
-packages = [{include = "palace_tools", from = "src"}]
+packages = [
+    {include = "palace", from = "src/_vendor"},
+    {include = "palace_tools", from = "src"},
+]
 readme = "README.md"
 version = "0"
 
 [tool.poetry.dependencies]
+annotated-types = "^0.7.0"
 ddsketch = "^3.0.1"
 httpx = "^0.28.1"
 jwcrypto = "^1.5.6"
 mutagen = "^1.47.0"
-palace-manager = {git = "https://github.com/ThePalaceProject/circulation.git", branch = "main"}
-psycopg2-binary = "^2.9.11"
+pycountry = "^26.2.16"
 pydantic = "^2.11.7"
 python = ">=3.12,<4"
+python-dateutil = "2.9.0.post0"
 python-vlc = "^3.0.20123"
 rich = "^14.0.0"
 textual = "^8.0.0"
 typer = "^0.24.1"
 typing_extensions = {version = "^4.9.0", python = "<3.11"}
+uritemplate = "4.2.0"
 xmltodict = "^1.0.2"
 
 [tool.poetry.group.ci.dependencies]

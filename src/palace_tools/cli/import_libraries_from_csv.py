@@ -7,8 +7,7 @@ import requests
 import typer
 from requests import Response
 
-from palace.manager.api.admin.controller.library_settings import LibraryImportInfo
-
+from palace_tools.models import LibraryImportInfo
 from palace_tools.utils.typer import run_typer_app_as_main
 
 app = typer.Typer()
