@@ -4796,14 +4796,14 @@ types-setuptools = "*"
 
 [[package]]
 name = "types-jwcrypto"
-version = "1.5.0.20260408"
+version = "1.5.7.20260409"
 description = "Typing stubs for jwcrypto"
 optional = false
 python-versions = ">=3.10"
 groups = ["dev"]
 files = [
-    {file = "types_jwcrypto-1.5.0.20260408-py3-none-any.whl", hash = "sha256:17958abd0a5c9978694ee0b114509b9f764b4356dae6a8090d0c673013f47948"},
-    {file = "types_jwcrypto-1.5.0.20260408.tar.gz", hash = "sha256:72fe8fe4ed1cdc7c8f0d9190ba4f211e19baf0475dd15ff7ab31457baca7a363"},
+    {file = "types_jwcrypto-1.5.7.20260409-py3-none-any.whl", hash = "sha256:69470644242aa6c66c9aa730ba1dd975dbb23acc56c46f259cf75fb52133651a"},
+    {file = "types_jwcrypto-1.5.7.20260409.tar.gz", hash = "sha256:34084f740198c3b1abe8c63ff176e4b7b5c4274890a2a0c51fa181246520b108"},
 ]
 
 [package.dependencies]
