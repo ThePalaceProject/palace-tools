@@ -38,7 +38,7 @@ psycopg2-binary = "^2.9.11"
 pydantic = "^2.11.7"
 python = ">=3.12,<4"
 python-vlc = "^3.0.20123"
-rich = "^14.0.0"
+rich = "^15.0.0"
 textual = "^8.0.0"
 typer = "^0.24.1"
 typing_extensions = {version = "^4.9.0", python = "<3.11"}
