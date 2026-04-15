@@ -6,14 +6,14 @@ from typing import Any
 
 import pytest
 
-from palace_tools.models.api.rwpm_audiobook import (
+from palace.tools.models.api.rwpm_audiobook import (
     AudioTrack,
     Manifest,
     ManifestMetadata,
     ToCEntry,
 )
-from palace_tools.models.internal.rwpm_audio.audio_segment import AudioSegment
-from palace_tools.models.internal.rwpm_audio.audiobook import (
+from palace.tools.models.internal.rwpm_audio.audio_segment import AudioSegment
+from palace.tools.models.internal.rwpm_audio.audiobook import (
     Audiobook,
     EnhancedToCEntry,
 )

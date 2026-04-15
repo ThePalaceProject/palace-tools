@@ -39,38 +39,41 @@ readme = "README.md"
 requires-python = ">=3.12,<4"
 
 [project.scripts]
-audiobook-manifest-summary = "palace_tools.cli.summarize_rwpm_audio_manifest:main"
-download-feed = "palace_tools.cli.download_feed:main"
-fetch-lcp = "palace_tools.cli.fetch_lcp:main"
-generate-demarque-keys = "palace_tools.cli.generate_demarque_keys:main"
-import-libraries-from-csv = "palace_tools.cli.import_libraries_from_csv:main"
-overdrive_feed_analyzer = "palace_tools.cli.overdrive_feed_analyzer:main"
-palace-terminal = "palace_tools.cli.palace_terminal:main"
-patron-bookshelf = "palace_tools.cli.patron_bookshelf:main"
-stress-test-opds2 = "palace_tools.cli.stress_test_opds2:main"
-validate-audiobook-manifests = "palace_tools.cli.validate_manifests:main"
-validate-feed = "palace_tools.cli.validate_feed:main"
+audiobook-manifest-summary = "palace.tools.cli.summarize_rwpm_audio_manifest:main"
+download-feed = "palace.tools.cli.download_feed:main"
+fetch-lcp = "palace.tools.cli.fetch_lcp:main"
+generate-demarque-keys = "palace.tools.cli.generate_demarque_keys:main"
+import-libraries-from-csv = "palace.tools.cli.import_libraries_from_csv:main"
+overdrive_feed_analyzer = "palace.tools.cli.overdrive_feed_analyzer:main"
+palace-terminal = "palace.tools.cli.palace_terminal:main"
+patron-bookshelf = "palace.tools.cli.patron_bookshelf:main"
+stress-test-opds2 = "palace.tools.cli.stress_test_opds2:main"
+validate-audiobook-manifests = "palace.tools.cli.validate_manifests:main"
+validate-feed = "palace.tools.cli.validate_feed:main"
 
 [project.urls]
 Homepage = "https://thepalaceproject.org"
 Repository = "https://github.com/ThePalaceProject/palace-tools"
 
 [tool.hatch.build.hooks.vcs]
-version-file = "src/palace_tools/_version.py"
+version-file = "src/palace/tools/_version.py"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/palace_tools"]
+packages = ["src/palace"]
 
 [tool.hatch.version]
 source = "vcs"
 
 [tool.isort]
-known_palace = ["palace"]
+known_first_party = ["palace.tools"]
+known_palace = ["palace.opds"]
 profile = "black"
 sections = "FUTURE,STDLIB,THIRDPARTY,PALACE,FIRSTPARTY,LOCALFOLDER"
 
 [tool.mypy]
-files = ["src", "tests"]
+explicit_package_bases = true
+files = ["src/palace", "tests"]
+mypy_path = ["src"]
 plugins = ["pydantic.mypy"]
 strict = true
 

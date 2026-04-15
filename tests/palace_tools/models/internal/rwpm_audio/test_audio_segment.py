@@ -4,8 +4,8 @@ from collections.abc import Generator
 
 import pytest
 
-from palace_tools.models.api.rwpm_audiobook import AudioTrack, ToCEntry
-from palace_tools.models.internal.rwpm_audio.audio_segment import (
+from palace.tools.models.api.rwpm_audiobook import AudioTrack, ToCEntry
+from palace.tools.models.internal.rwpm_audio.audio_segment import (
     AudioSegment,
     ToCAudioSegmentSequence,
     _toc_track_boundaries,

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from palace_tools.cli.stress_test_opds2 import (
+from palace.tools.cli.stress_test_opds2 import (
     RequestResult,
     ResponseTimeStats,
     StressTestStats,
