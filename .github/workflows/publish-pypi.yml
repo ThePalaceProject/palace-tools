@@ -1,0 +1,47 @@
+name: Publish to PyPI
+
+# Publishes `palace-tools` to PyPI when a GitHub Release is published,
+# using PyPI's Trusted Publishing (OIDC) flow.
+# https://docs.pypi.org/trusted-publishers/
+#
+# No action is needed on new releases beyond publishing a GitHub Release
+# with a tag that hatch-vcs can parse as a version (e.g. `v1.0.0`).
+
+on:
+  release:
+    types: [published]
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  publish:
+    name: Publish palace-tools to PyPI
+    runs-on: ubuntu-24.04
+    permissions:
+      # Required for PyPI Trusted Publishing (OIDC).
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          # hatch-vcs needs the full tag history.
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8.0.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Build
+        run: uv build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist
+          print-hash: true

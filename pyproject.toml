@@ -1,6 +1,6 @@
 [build-system]
 build-backend = "hatchling.build"
-requires = ["hatchling"]
+requires = ["hatch-vcs", "hatchling"]
 
 [dependency-groups]
 ci = [
@@ -32,11 +32,11 @@ dependencies = [
     "xmltodict>=1.0.2,<2",
 ]
 description = "Palace Tools"
+dynamic = ["version"]
 license = "Apache-2.0"
 name = "palace-tools"
 readme = "README.md"
 requires-python = ">=3.12,<4"
-version = "0"
 
 [project.scripts]
 audiobook-manifest-summary = "palace_tools.cli.summarize_rwpm_audio_manifest:main"
@@ -53,9 +53,13 @@ validate-feed = "palace_tools.cli.validate_feed:main"
 
 [project.urls]
 Homepage = "https://thepalaceproject.org"
+Repository = "https://github.com/ThePalaceProject/palace-tools"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/palace_tools"]
+
+[tool.hatch.version]
+source = "vcs"
 
 [tool.isort]
 known_palace = ["palace"]
