@@ -55,6 +55,9 @@ validate-feed = "palace_tools.cli.validate_feed:main"
 Homepage = "https://thepalaceproject.org"
 Repository = "https://github.com/ThePalaceProject/palace-tools"
 
+[tool.hatch.build.hooks.vcs]
+version-file = "src/palace_tools/_version.py"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/palace_tools"]
 

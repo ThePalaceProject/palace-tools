@@ -27,6 +27,10 @@ var/
 *.egg-info/
 .installed.cfg
 *.egg
+.envrc
+
+# hatch-vcs generated
+src/palace_tools/_version.py
 
 # Caches
 .*_cache
