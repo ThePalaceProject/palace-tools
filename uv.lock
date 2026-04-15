@@ -504,7 +504,6 @@ wheels = [
 
 [[package]]
 name = "palace-tools"
-version = "0"
 source = { editable = "." }
 dependencies = [
     { name = "ddsketch" },
