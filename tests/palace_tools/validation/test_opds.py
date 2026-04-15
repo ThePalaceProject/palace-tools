@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 
-from palace.manager.opds.opds2 import Publication
+from palace.opds.opds2 import Publication
 
 from palace_tools.validation.opds import validate_opds_feeds, validate_opds_publications
 

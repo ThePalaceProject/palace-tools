@@ -5,11 +5,22 @@ from typing import Any
 
 import requests
 import typer
+from pydantic import BaseModel
 from requests import Response
 
-from palace.manager.api.admin.controller.library_settings import LibraryImportInfo
-
 from palace_tools.utils.typer import run_typer_app_as_main
+
+
+class LibraryImportInfo(BaseModel):
+    name: str
+    short_name: str
+    website_url: str
+    patron_support_email: str
+    large_collection_languages: list[str]
+    small_collection_languages: list[str]
+    facets_default_order: str
+    enabled_entry_points: list[str]
+
 
 app = typer.Typer()
 
