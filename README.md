@@ -66,8 +66,8 @@ uv python install 3.12
 
 ## Installation
 
-This package is not currently available oon PyPI, but it can be installed and run locally in a couple of
-different ways, depending on your needs.
+This package is [published to PyPI](https://pypi.org/project/palace-tools/), and can also be
+installed and run locally from a clone of the repository.
 
 ### Installing the CLI Tools globally with `pipx`
 
@@ -77,11 +77,12 @@ If you don't already have `pipx` installed, you can get installation instruction
 [here](https://github.com/pypa/pipx?tab=readme-ov-file#install-pipx).
 
 ```shell
-pipx install git+https://github.com/ThePalaceProject/palace-tools.git
+pipx install palace-tools
 ```
 
-or, if you wish to install a particular branch or commit, you can do something like this
-(more details about [installing from VCS here](https://github.com/pypa/pipx?tab=readme-ov-file#installing-from-source-control)):
+Alternatively, you can install directly from the git repository, for example to try a
+particular branch or commit (more details about
+[installing from VCS here](https://github.com/pypa/pipx?tab=readme-ov-file#installing-from-source-control)):
 
 ```shell
 pipx install git+https://github.com/ThePalaceProject/palace-tools.git@branch-or-commit
