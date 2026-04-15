@@ -24,7 +24,6 @@ dependencies = [
     "jwcrypto>=1.5.6,<2",
     "mutagen>=1.47.0,<2",
     "palace-opds>=41.0.0,<43",
-    "psycopg2-binary>=2.9.11,<3",
     "pydantic>=2.11.7,<3",
     "python-vlc>=3.0.20123,<4",
     "rich>=15.0.0,<16",
