@@ -1,6 +1,61 @@
 [build-system]
-build-backend = "poetry.core.masonry.api"
-requires = ["poetry-core"]
+build-backend = "hatchling.build"
+requires = ["hatchling"]
+
+[dependency-groups]
+ci = [
+    "pre-commit>=4.3.0,<5",
+    "tox-uv>=1.35.1,<2",
+    "tox>=4.52.1,<5",
+]
+dev = [
+    "mypy>=1.8.0,<2",
+    "pytest>=9.0.1,<10",
+    "types-jwcrypto>=1.5.0.20251102,<2",
+    "types-requests>=2.32.4.20250913,<3",
+    "types-xmltodict>=1.0.1.20250920,<2",
+]
+
+[project]
+authors = [{name = "The Palace Project", email = "info@thepalaceproject.org"}]
+dependencies = [
+    "ddsketch>=3.0.1,<4",
+    "httpx>=0.28.1,<0.29",
+    "jwcrypto>=1.5.6,<2",
+    "mutagen>=1.47.0,<2",
+    "palace-opds>=41.0.0,<43",
+    "pydantic>=2.11.7,<3",
+    "python-vlc>=3.0.20123,<4",
+    "rich>=15.0.0,<16",
+    "textual>=8.0.0,<9",
+    "typer>=0.24.1,<0.25",
+    "xmltodict>=1.0.2,<2",
+]
+description = "Palace Tools"
+license = "Apache-2.0"
+name = "palace-tools"
+readme = "README.md"
+requires-python = ">=3.12,<4"
+version = "0"
+
+[project.scripts]
+audiobook-manifest-summary = "palace_tools.cli.summarize_rwpm_audio_manifest:main"
+download-feed = "palace_tools.cli.download_feed:main"
+fetch-lcp = "palace_tools.cli.fetch_lcp:main"
+generate-demarque-keys = "palace_tools.cli.generate_demarque_keys:main"
+import-libraries-from-csv = "palace_tools.cli.import_libraries_from_csv:main"
+overdrive_feed_analyzer = "palace_tools.cli.overdrive_feed_analyzer:main"
+palace-terminal = "palace_tools.cli.palace_terminal:main"
+patron-bookshelf = "palace_tools.cli.patron_bookshelf:main"
+stress-test-opds2 = "palace_tools.cli.stress_test_opds2:main"
+validate-audiobook-manifests = "palace_tools.cli.validate_manifests:main"
+validate-feed = "palace_tools.cli.validate_feed:main"
+
+[project.urls]
+Homepage = "https://thepalaceproject.org"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/palace_tools"]
 
 [tool.isort]
 known_palace = ["palace"]
@@ -17,56 +72,6 @@ ignore_missing_imports = true
 module = [
     "vlc",
 ]
-
-[tool.poetry]
-authors = ["The Palace Project <info@thepalaceproject.org>"]
-description = "Palace Tools"
-homepage = "https://thepalaceproject.org"
-license = "Apache-2.0"
-name = "palace-tools"
-packages = [{include = "palace_tools", from = "src"}]
-readme = "README.md"
-version = "0"
-
-[tool.poetry.dependencies]
-ddsketch = "^3.0.1"
-httpx = "^0.28.1"
-jwcrypto = "^1.5.6"
-mutagen = "^1.47.0"
-palace-opds = "^41.0.0"
-psycopg2-binary = "^2.9.11"
-pydantic = "^2.11.7"
-python = ">=3.12,<4"
-python-vlc = "^3.0.20123"
-rich = "^15.0.0"
-textual = "^8.0.0"
-typer = "^0.24.1"
-typing_extensions = {version = "^4.9.0", python = "<3.11"}
-xmltodict = "^1.0.2"
-
-[tool.poetry.group.ci.dependencies]
-pre-commit = "^4.3.0"
-
-[tool.poetry.group.dev.dependencies]
-mypy = "^1.8.0"
-pytest = "^9.0.1"
-tox = "^4.0.0"
-types-jwcrypto = "^1.5.0.20251102"
-types-requests = "^2.32.4.20250913"
-types-xmltodict = "^1.0.1.20250920"
-
-[tool.poetry.scripts]
-audiobook-manifest-summary = "palace_tools.cli.summarize_rwpm_audio_manifest:main"
-download-feed = "palace_tools.cli.download_feed:main"
-fetch-lcp = "palace_tools.cli.fetch_lcp:main"
-generate-demarque-keys = "palace_tools.cli.generate_demarque_keys:main"
-import-libraries-from-csv = "palace_tools.cli.import_libraries_from_csv:main"
-overdrive_feed_analyzer = "palace_tools.cli.overdrive_feed_analyzer:main"
-palace-terminal = "palace_tools.cli.palace_terminal:main"
-patron-bookshelf = "palace_tools.cli.patron_bookshelf:main"
-stress-test-opds2 = "palace_tools.cli.stress_test_opds2:main"
-validate-audiobook-manifests = "palace_tools.cli.validate_manifests:main"
-validate-feed = "palace_tools.cli.validate_feed:main"
 
 [tool.tomlsort]
 ignore_case = true
