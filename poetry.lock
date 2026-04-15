@@ -314,43 +314,6 @@ files = [
 ]
 
 [[package]]
-name = "dnspython"
-version = "2.8.0"
-description = "DNS toolkit"
-optional = false
-python-versions = ">=3.10"
-groups = ["main"]
-files = [
-    {file = "dnspython-2.8.0-py3-none-any.whl", hash = "sha256:01d9bbc4a2d76bf0db7c1f729812ded6d912bd318d3b1cf81d30c0f845dbf3af"},
-    {file = "dnspython-2.8.0.tar.gz", hash = "sha256:181d3c6996452cb1189c4046c61599b84a5a86e099562ffde77d26984ff26d0f"},
-]
-
-[package.extras]
-dev = ["black (>=25.1.0)", "coverage (>=7.0)", "flake8 (>=7)", "hypercorn (>=0.17.0)", "mypy (>=1.17)", "pylint (>=3)", "pytest (>=8.4)", "pytest-cov (>=6.2.0)", "quart-trio (>=0.12.0)", "sphinx (>=8.2.0)", "sphinx-rtd-theme (>=3.0.0)", "twine (>=6.1.0)", "wheel (>=0.45.0)"]
-dnssec = ["cryptography (>=45)"]
-doh = ["h2 (>=4.2.0)", "httpcore (>=1.0.0)", "httpx (>=0.28.0)"]
-doq = ["aioquic (>=1.2.0)"]
-idna = ["idna (>=3.10)"]
-trio = ["trio (>=0.30)"]
-wmi = ["wmi (>=1.5.1) ; platform_system == \"Windows\""]
-
-[[package]]
-name = "email-validator"
-version = "2.3.0"
-description = "A robust email address syntax and deliverability validation library."
-optional = false
-python-versions = ">=3.8"
-groups = ["main"]
-files = [
-    {file = "email_validator-2.3.0-py3-none-any.whl", hash = "sha256:80f13f623413e6b197ae73bb10bf4eb0908faf509ad8362c5edeb0be7fd450b4"},
-    {file = "email_validator-2.3.0.tar.gz", hash = "sha256:9fc05c37f2f6cf439ff414f8fc46d917929974a82244c20eb10231ba60c54426"},
-]
-
-[package.dependencies]
-dnspython = ">=2.0.0"
-idna = ">=2.0.0"
-
-[[package]]
 name = "filelock"
 version = "3.25.0"
 description = "A platform independent file lock."
@@ -776,46 +739,36 @@ files = [
 
 [[package]]
 name = "palace-opds"
-version = "0"
+version = "41.0.0"
 description = "Pydantic models for OPDS 2.0, RWPM, ODL, LCP, and Palace Project extensions."
 optional = false
-python-versions = ">=3.12,<4"
+python-versions = "<4,>=3.12"
 groups = ["main"]
-files = []
-develop = false
+files = [
+    {file = "palace_opds-41.0.0-py3-none-any.whl", hash = "sha256:7e17a8f4ed6dbfe2000e13ce8866900df79dac2a33b4038399f48843c4d91d2d"},
+    {file = "palace_opds-41.0.0.tar.gz", hash = "sha256:269d3940b065faff6de402381c9204fac9ddea81d3310692e6eb593d78f4dc51"},
+]
 
 [package.dependencies]
-palace-util = "*"
+palace-util = "41.0.0"
 pycountry = ">=26.2.16,<27"
-pydantic = {version = ">=2.12,<3", extras = ["email"]}
+pydantic = ">=2.12,<3"
 uritemplate = "4.2.0"
-
-[package.source]
-type = "git"
-url = "https://github.com/ThePalaceProject/circulation.git"
-reference = "HEAD"
-resolved_reference = "11171c1af0b060d904b0f36e71039520db71e5ec"
-subdirectory = "packages/palace-opds"
 
 [[package]]
 name = "palace-util"
-version = "0"
+version = "41.0.0"
 description = "Shared utilities for Palace Project packages."
 optional = false
-python-versions = ">=3.12,<4"
+python-versions = "<4,>=3.12"
 groups = ["main"]
-files = []
-develop = false
+files = [
+    {file = "palace_util-41.0.0-py3-none-any.whl", hash = "sha256:c89873a5ae2c421d37637e7ac1a91fe17f113f90c29012bba7981ae5d6114ccc"},
+    {file = "palace_util-41.0.0.tar.gz", hash = "sha256:b41eab0a4fcb883fcd7e2b4145bad6de43004d2dd883002475f8797cb4ef9148"},
+]
 
 [package.dependencies]
 python-dateutil = ">=2.8,<3"
-
-[package.source]
-type = "git"
-url = "https://github.com/ThePalaceProject/circulation.git"
-reference = "HEAD"
-resolved_reference = "11171c1af0b060d904b0f36e71039520db71e5ec"
-subdirectory = "packages/palace-util"
 
 [[package]]
 name = "pathspec"
@@ -986,7 +939,6 @@ files = [
 
 [package.dependencies]
 annotated-types = ">=0.6.0"
-email-validator = {version = ">=2.0.0", optional = true, markers = "extra == \"email\""}
 pydantic-core = "2.46.0"
 typing-extensions = ">=4.14.1"
 typing-inspection = ">=0.4.2"
@@ -1599,4 +1551,4 @@ test = ["pytest", "pytest-cov"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<4"
-content-hash = "ea9cadf49862c41164240f583f577be5e23296cea5e8b3b01c22f774ff0abedd"
+content-hash = "e541be104f09439de53afc9f81d0e7195bd6c50c5a782b1b8a11a2134db90924"
