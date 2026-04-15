@@ -6,7 +6,7 @@ import pytest
 
 from palace.opds.opds2 import Publication
 
-from palace_tools.validation.opds import validate_opds_feeds, validate_opds_publications
+from palace.tools.validation.opds import validate_opds_feeds, validate_opds_publications
 
 
 class OpdsValidationFixture:

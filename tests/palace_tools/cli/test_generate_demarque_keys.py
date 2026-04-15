@@ -7,7 +7,7 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
-from palace_tools.cli.generate_demarque_keys import DEFAULT_KID_PREFIX, app
+from palace.tools.cli.generate_demarque_keys import DEFAULT_KID_PREFIX, app
 
 runner = CliRunner()
 

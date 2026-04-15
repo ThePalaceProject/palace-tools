@@ -30,7 +30,7 @@ var/
 .envrc
 
 # hatch-vcs generated
-src/palace_tools/_version.py
+src/palace/tools/_version.py
 
 # Caches
 .*_cache

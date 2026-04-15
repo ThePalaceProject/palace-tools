@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-from palace_tools.cli.palace_terminal import (
+from palace.tools.cli.palace_terminal import (
     Chapter,
     PalaceMediaPlayer,
     TableOfContents,
@@ -18,7 +18,7 @@ from palace_tools.cli.palace_terminal import (
     get_progress,
     ms_to_hms,
 )
-from palace_tools.models.api.rwpm_audiobook import Manifest
+from palace.tools.models.api.rwpm_audiobook import Manifest
 
 
 @pytest.fixture
@@ -726,7 +726,7 @@ class TestPalaceMediaPlayer:
         with pytest.raises(FileNotFoundError, match="does not exist"):
             PalaceMediaPlayer(non_existent)
 
-    @patch("palace_tools.cli.palace_terminal.vlc")
+    @patch("palace.tools.cli.palace_terminal.vlc")
     def test_initialization_creates_vlc_instances(
         self, mock_vlc: MagicMock, manifest_file: Path
     ) -> None:
@@ -757,7 +757,7 @@ class TestPalaceMediaPlayer:
         assert player.player == mock_player
         assert player.list_player == mock_list_player
 
-    @patch("palace_tools.cli.palace_terminal.vlc")
+    @patch("palace.tools.cli.palace_terminal.vlc")
     def test_file_paths_converted_to_uris(
         self, mock_vlc: MagicMock, manifest_file: Path
     ) -> None:
@@ -792,7 +792,7 @@ class TestPalaceMediaPlayer:
         assert call_args[0] == expected_uri_1
         assert call_args[1] == expected_uri_2
 
-    @patch("palace_tools.cli.palace_terminal.vlc")
+    @patch("palace.tools.cli.palace_terminal.vlc")
     def test_special_characters_in_filenames_handled_correctly(
         self, mock_vlc: MagicMock, manifest_file: Path
     ) -> None:
@@ -821,7 +821,7 @@ class TestPalaceMediaPlayer:
             in uri_with_colons
         )
 
-    @patch("palace_tools.cli.palace_terminal.vlc")
+    @patch("palace.tools.cli.palace_terminal.vlc")
     def test_current_position_initialized_to_first_track(
         self, mock_vlc: MagicMock, manifest_file: Path
     ) -> None:
@@ -841,7 +841,7 @@ class TestPalaceMediaPlayer:
         assert player.current_position.track == player.tracks[0]
         assert player.current_position.timestamp == 0
 
-    @patch("palace_tools.cli.palace_terminal.vlc")
+    @patch("palace.tools.cli.palace_terminal.vlc")
     def test_playback_speed_methods(
         self, mock_vlc: MagicMock, manifest_file: Path
     ) -> None:
