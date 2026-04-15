@@ -6,12 +6,12 @@ from typing import Any
 
 from pydantic import TypeAdapter, ValidationError
 
-from palace.manager.opds.opds2 import PublicationFeedNoValidation
+from palace.opds.opds2 import PublicationFeedNoValidation
 
 from palace_tools.utils.logging import LogCapture
 
 # Logger name for capturing OPDS parsing warnings
-OPDS_LOGGER_NAME = "palace.manager.opds"
+OPDS_LOGGER_NAME = "palace.opds"
 
 
 def _should_ignore_error(error: ValidationError, ignore_errors: list[str]) -> bool:

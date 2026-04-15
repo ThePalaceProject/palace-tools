@@ -5,8 +5,8 @@ from pathlib import Path
 
 import typer
 
-from palace.manager.opds import opds2
-from palace.manager.opds.odl import odl
+from palace.opds import opds2
+from palace.opds.odl import odl
 
 from palace_tools.feeds import opds
 from palace_tools.utils.typer import run_typer_app_as_main
