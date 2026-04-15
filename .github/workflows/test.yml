@@ -12,24 +12,16 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Set up Python 🐍
-        uses: actions/setup-python@v6
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8.0.0
         with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
           python-version: ${{ env.PYTHON_VERSION }}
+          activate-environment: true
 
-      - name: Install Poetry 🎸
-        uses: ThePalaceProject/circulation/.github/actions/poetry@main
-        with:
-          version: "2.2.1"
-          cache: true
-          cache-name: without-ci
+      - name: Install Tox 🧪
+        run: uv sync --frozen --only-group ci
 
-      - name: Install OS Packages 🧰
-        run: |
-          sudo apt-get update
-
-      - name: Install Python Packages 📦
-        run: poetry install --without ci
-
-      - name: Run Tests with Tox 🧪
-        run: poetry run tox
+      - name: Run Tests 🧪
+        run: tox

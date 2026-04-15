@@ -49,38 +49,20 @@ manifest conforming to the [Audiobook Profile](https://github.com/readium/webpub
 
 ## Working as a developer on this project
 
-### pyenv
+### uv
 
-[pyenv](https://github.com/pyenv/pyenv) lets you easily switch between multiple versions of Python. It can be
-[installed](https://github.com/pyenv/pyenv-installer) using the command `curl https://pyenv.run | bash`. You can then
-install the version of Python you want to work with.
+This project uses [uv](https://docs.astral.sh/uv/) for Python and dependency management.
+If you plan to work on this project, you will need `uv`.
 
-It is recommended that [pyenv-virtualenv](https://github.com/pyenv/pyenv-virtualenv) be used to allow `pyenv`
-to manage _virtual environments_ in a manner that can be used by the [poetry](#poetry) tool. The `pyenv-virtualenv`
-plugin can be installed by cloning the relevant repository into the `plugins` subdirectory of your `$PYENV_ROOT`:
+uv can be installed with `curl -LsSf https://astral.sh/uv/install.sh | sh`. See the
+[uv documentation](https://docs.astral.sh/uv/getting-started/installation/) for other
+installation options.
 
-```sh
-mkdir -p $PYENV_ROOT/plugins
-cd $PYENV_ROOT/plugins
-git clone https://github.com/pyenv/pyenv-virtualenv
-```
-
-After cloning the repository, `pyenv` now has a new `virtualenv` command:
+Once uv is installed, you can install the required Python version with:
 
 ```sh
-$ pyenv virtualenv
-pyenv-virtualenv: no virtualenv name given.
+uv python install 3.12
 ```
-
-### Poetry
-
-This project uses [poetry](https://python-poetry.org/) for dependency management.
-If you plan to work on this project, you will need `poetry`.
-
-Poetry can be installed using the command `curl -sSL https://install.python-poetry.org | python3 -`.
-
-More information about installation options can be found in the
-[poetry documentation](https://python-poetry.org/docs/master/#installation).
 
 ## Installation
 
@@ -111,8 +93,7 @@ If installation is successful, `pipx` will list the apps that are installed with
 
 - Clone the repository.
 - Change into the cloned directory.
-- Run `pyenv virtualenv <python-version> <virtualenv-name>` to create a Python virtual environment.
-- Run `pyenv local <virtualenv-name>` to use that virtual environment whenever in the cloned directory.
-- Run `poetry install` to install the project dependencies and the CLI tools into the virtual environment.
+- Run `uv sync --all-groups` to install the project dependencies and the CLI tools into a
+  `.venv` virtual environment.
 
-At this point, you should be able to run the CLI tools using `poetry run <cli-command-and-args>`.
+At this point, you should be able to run the CLI tools using `uv run <cli-command-and-args>`.
