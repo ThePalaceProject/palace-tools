@@ -6,12 +6,13 @@ import sys
 from base64 import b64encode
 from collections.abc import Callable, Generator, Mapping
 from enum import Enum
-from json import JSONDecodeError
 from pathlib import Path
 from typing import Any, NamedTuple, TextIO
 
 import httpx
 from rich.progress import MofNCompleteColumn, Progress, SpinnerColumn
+
+from palace.tools.feeds.retry import request_with_retry_sync
 
 
 class AuthType(Enum):
@@ -165,19 +166,8 @@ def error_and_exit(response: httpx.Response, detail: str = "") -> None:
     sys.exit(-1)
 
 
-def make_request(session: httpx.Client, url: str, retries: int = 0) -> dict[str, Any]:
-    response = session.get(url)
-    if response.status_code != 200:
-        if retries < 3:
-            print_error(response)
-            print(f"Retrying... ({retries + 1}/3)")
-            return make_request(session, url, retries + 1)
-        error_and_exit(response)
-    try:
-        return response.json()  # type: ignore[no-any-return]
-    except JSONDecodeError as e:
-        error_and_exit(response, str(e))
-        raise
+def make_request(session: httpx.Client, url: str) -> dict[str, Any]:
+    return request_with_retry_sync(session, url)
 
 
 def write_json(file: TextIO, data: list[dict[str, Any]]) -> None:

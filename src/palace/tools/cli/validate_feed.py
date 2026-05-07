@@ -13,7 +13,6 @@ from palace.opds.odl import odl as odl_models
 from palace.tools.feeds import odl, opds
 from palace.tools.utils.typer import run_typer_app_as_main
 from palace.tools.validation.opds import (
-    validate_license_documents,
     validate_opds_feeds,
     validate_opds_publications,
 )
@@ -85,41 +84,30 @@ def validate_opds2_odl(
     """Validate OPDS 2 + ODL feed."""
     feeds = opds.fetch(url, username, password, authentication)
 
-    def run_validation() -> list[str]:
-        results = validate_opds_feeds(
-            feeds,
-            odl_models.Opds2OrOpds2WithOdlPublication,
-            ignore,
-            diff,
-            capture_warnings=not no_warnings,
+    if license_documents:
+        publications: list[dict[str, Any]] = []
+        for feed in feeds.values():
+            publications.extend(feed.get("publications", []))
+        asyncio.run(
+            odl.fetch_license_documents(
+                publications,
+                username=username,
+                password=password,
+                auth_type=authentication,
+                connections=connections,
+                base_url=url,
+            )
         )
 
-        if license_documents:
-            publications: list[dict[str, Any]] = []
-            for feed in feeds.values():
-                publications.extend(feed.get("publications", []))
-            asyncio.run(
-                odl.fetch_license_documents(
-                    publications,
-                    username=username,
-                    password=password,
-                    auth_type=authentication,
-                    connections=connections,
-                    base_url=url,
-                )
-            )
-            results.extend(
-                validate_license_documents(
-                    publications,
-                    ignore_errors=ignore,
-                    display_diff=diff,
-                    capture_warnings=not no_warnings,
-                )
-            )
-
-        return results
-
-    validate(output_file, run_validation)
+    validate(
+        output_file,
+        validate_opds_feeds,
+        feeds,
+        odl_models.Opds2OrOpds2WithOdlPublication,
+        ignore_errors=ignore,
+        display_diff=diff,
+        capture_warnings=not no_warnings,
+    )
 
 
 @app.command("opds2")

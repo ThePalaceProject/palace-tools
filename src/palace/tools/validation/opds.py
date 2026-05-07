@@ -4,12 +4,12 @@ import textwrap
 from difflib import context_diff
 from typing import Any
 
-from pydantic import TypeAdapter, ValidationError
+from pydantic import BaseModel, TypeAdapter, ValidationError
 
 from palace.opds.odl.info import LicenseInfo
 from palace.opds.opds2 import PublicationFeedNoValidation
 
-from palace.tools.feeds.odl import LICENSE_DOCUMENT_KEY, iter_license_info_links
+from palace.tools.feeds.odl import LICENSE_DOCUMENT_KEY
 from palace.tools.utils.logging import LogCapture
 
 # Logger name for capturing OPDS parsing warnings
@@ -27,20 +27,12 @@ def _should_ignore_error(error: ValidationError, ignore_errors: list[str]) -> bo
     return False
 
 
-def _diff_original_parsed(
-    feed: dict[str, Any], publication_feed: PublicationFeedNoValidation
-) -> list[str]:
+def _diff_original_parsed(original: dict[str, Any], parsed: BaseModel) -> list[str]:
     return list(
         context_diff(
+            json.dumps(original, indent=2, sort_keys=True).splitlines(),
             json.dumps(
-                feed,
-                indent=2,
-                sort_keys=True,
-            ).splitlines(),
-            json.dumps(
-                publication_feed.model_dump(
-                    mode="json", exclude_unset=True, by_alias=True
-                ),
+                parsed.model_dump(mode="json", exclude_unset=True, by_alias=True),
                 indent=2,
                 sort_keys=True,
             ).splitlines(),
@@ -123,51 +115,16 @@ def _setup_log_capture() -> LogCapture:
     return log_capture
 
 
-def validate_opds_publications(
-    publications: list[dict[str, Any]],
-    publication_cls: Any,
-    *,
-    url: str | None = None,
-    ignore_errors: list[str],
-    display_diff: bool,
-    capture_warnings: bool = True,
-) -> list[str]:
-    publication_adapter = TypeAdapter(publication_cls)
-    errors = []
-
-    log_capture = _setup_log_capture() if capture_warnings else None
-
-    for publication_dict in publications:
-        if log_capture:
-            log_capture.clear()
-
-        try:
-            publication = publication_adapter.validate_python(publication_dict)
-
-            # Check for captured warnings during parsing
-            warnings = "".join(log_capture.get_messages()) if log_capture else None
-
-            if display_diff:
-                diff = "\n".join(_diff_original_parsed(publication_dict, publication))
-            else:
-                diff = None
-
-            if diff or warnings:
-                errors.extend(
-                    _publication_issues(
-                        publication_dict,
-                        url,
-                        warnings=warnings,
-                        diff=diff,
-                    )
-                )
-        except ValidationError as e:
-            if _should_ignore_error(e, ignore_errors):
-                continue
-
-            errors.extend(_publication_issues(publication_dict, url, errors=str(e)))
-
-    return errors
+def _license_info_url(license_dict: dict[str, Any]) -> str:
+    info_content_type = LicenseInfo.content_type()
+    for link in license_dict.get("links") or []:
+        if (
+            link.get("rel") == "self"
+            and link.get("type") == info_content_type
+            and link.get("href")
+        ):
+            return link["href"]  # type: ignore[no-any-return]
+    return "<unknown>"
 
 
 def _license_issues(
@@ -181,10 +138,11 @@ def _license_issues(
     diff: str | None = None,
 ) -> list[str]:
     issues: list[str] = []
-    pub_metadata = publication_dict.get("metadata", {})
+    pub_metadata = publication_dict.get("metadata") or {}
     pub_identifier = pub_metadata.get("identifier", "<unknown>")
     pub_title = pub_metadata.get("title", "<unknown>")
-    license_identifier = license_dict.get("metadata", {}).get("identifier", "<unknown>")
+    license_metadata = license_dict.get("metadata") or {}
+    license_identifier = license_metadata.get("identifier", "<unknown>")
 
     issue_types = []
     if errors:
@@ -215,94 +173,115 @@ def _license_issues(
     return issues
 
 
-def validate_license_documents(
-    publications: list[dict[str, Any]],
+def _validate_license_document(
+    publication_dict: dict[str, Any],
+    license_dict: dict[str, Any],
+    license_doc: dict[str, Any],
+    license_info_adapter: TypeAdapter[LicenseInfo],
     *,
+    log_capture: LogCapture | None,
+    ignore_errors: list[str],
+    display_diff: bool,
+) -> list[str]:
+    info_url = _license_info_url(license_dict)
+
+    if log_capture:
+        log_capture.clear()
+
+    try:
+        parsed = license_info_adapter.validate_python(license_doc)
+    except ValidationError as e:
+        if _should_ignore_error(e, ignore_errors):
+            return []
+        return _license_issues(
+            publication_dict,
+            license_dict,
+            license_doc,
+            info_url,
+            errors=str(e),
+        )
+
+    warnings = "".join(log_capture.get_messages()) if log_capture else None
+
+    if display_diff:
+        diff_lines = _diff_original_parsed(license_doc, parsed)
+        diff = "\n".join(diff_lines) if diff_lines else None
+    else:
+        diff = None
+
+    if diff or warnings:
+        return _license_issues(
+            publication_dict,
+            license_dict,
+            license_doc,
+            info_url,
+            warnings=warnings,
+            diff=diff,
+        )
+    return []
+
+
+def validate_opds_publications(
+    publications: list[dict[str, Any]],
+    publication_cls: Any,
+    *,
+    url: str | None = None,
     ignore_errors: list[str],
     display_diff: bool,
     capture_warnings: bool = True,
 ) -> list[str]:
-    """
-    Validate every embedded License Info Document
-    (``license[LICENSE_DOCUMENT_KEY]``) against
-    :class:`palace.opds.odl.info.LicenseInfo`.
-
-    Licenses without an embedded document are skipped.
-    """
-    license_info_adapter = TypeAdapter(LicenseInfo)
-    errors: list[str] = []
+    publication_adapter = TypeAdapter(publication_cls)
+    license_info_adapter: TypeAdapter[LicenseInfo] = TypeAdapter(LicenseInfo)
+    errors = []
 
     log_capture = _setup_log_capture() if capture_warnings else None
 
-    info_urls: dict[int, str] = {
-        id(license_): info_url
-        for _, license_, info_url in iter_license_info_links(publications)
-    }
+    for publication_dict in publications:
+        if log_capture:
+            log_capture.clear()
 
-    for publication in publications:
-        for license_ in publication.get("licenses") or []:
+        try:
+            publication = publication_adapter.validate_python(publication_dict)
+
+            # Check for captured warnings during parsing
+            warnings = "".join(log_capture.get_messages()) if log_capture else None
+
+            if display_diff:
+                diff = "\n".join(_diff_original_parsed(publication_dict, publication))
+            else:
+                diff = None
+
+            if diff or warnings:
+                errors.extend(
+                    _publication_issues(
+                        publication_dict,
+                        url,
+                        warnings=warnings,
+                        diff=diff,
+                    )
+                )
+        except ValidationError as e:
+            if not _should_ignore_error(e, ignore_errors):
+                errors.extend(_publication_issues(publication_dict, url, errors=str(e)))
+
+        # Validate any embedded License Info Documents on this publication.
+        # Inert for plain OPDS 2 (no `licenses`) and for ODL feeds where the
+        # docs weren't fetched (no `license_document` key).
+        for license_ in publication_dict.get("licenses") or []:
             license_doc = license_.get(LICENSE_DOCUMENT_KEY)
             if license_doc is None:
                 continue
-
-            info_url = info_urls.get(id(license_), "<unknown>")
-
-            if log_capture:
-                log_capture.clear()
-
-            try:
-                parsed = license_info_adapter.validate_python(license_doc)
-
-                warnings = "".join(log_capture.get_messages()) if log_capture else None
-
-                if display_diff:
-                    diff_lines = list(
-                        context_diff(
-                            json.dumps(
-                                license_doc, indent=2, sort_keys=True
-                            ).splitlines(),
-                            json.dumps(
-                                parsed.model_dump(
-                                    mode="json",
-                                    exclude_unset=True,
-                                    by_alias=True,
-                                ),
-                                indent=2,
-                                sort_keys=True,
-                            ).splitlines(),
-                            fromfile="original",
-                            tofile="parsed",
-                            lineterm="",
-                        )
-                    )
-                    diff = "\n".join(diff_lines) if diff_lines else None
-                else:
-                    diff = None
-
-                if diff or warnings:
-                    errors.extend(
-                        _license_issues(
-                            publication,
-                            license_,
-                            license_doc,
-                            info_url,
-                            warnings=warnings,
-                            diff=diff,
-                        )
-                    )
-            except ValidationError as e:
-                if _should_ignore_error(e, ignore_errors):
-                    continue
-
-                errors.extend(
-                    _license_issues(
-                        publication,
-                        license_,
-                        license_doc,
-                        info_url,
-                        errors=str(e),
-                    )
+            errors.extend(
+                _validate_license_document(
+                    publication_dict,
+                    license_,
+                    license_doc,
+                    license_info_adapter,
+                    log_capture=log_capture,
+                    ignore_errors=ignore_errors,
+                    display_diff=display_diff,
                 )
+            )
 
     return errors
 

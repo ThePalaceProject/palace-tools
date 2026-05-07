@@ -4,11 +4,11 @@ from typing import Any
 
 import pytest
 
+from palace.opds.odl.odl import Opds2OrOpds2WithOdlPublication
 from palace.opds.opds2 import Publication
 
 from palace.tools.feeds.odl import LICENSE_DOCUMENT_KEY, iter_license_info_links
 from palace.tools.validation.opds import (
-    validate_license_documents,
     validate_opds_feeds,
     validate_opds_publications,
 )
@@ -400,12 +400,16 @@ class TestIterLicenseInfoLinks:
         assert list(iter_license_info_links([publication])) == []
 
 
-class TestValidateLicenseDocuments:
+class TestLicenseDocumentValidation:
+    """Embedded License Info Document validation, exercised through
+    validate_opds_publications with the ODL publication class."""
+
     def test_valid_license_info_returns_no_errors(self) -> None:
         publication = _odl_publication(license_document=_valid_license_info())
 
-        errors = validate_license_documents(
+        errors = validate_opds_publications(
             [publication],
+            Opds2OrOpds2WithOdlPublication,
             ignore_errors=[],
             display_diff=False,
         )
@@ -416,8 +420,9 @@ class TestValidateLicenseDocuments:
         invalid = {"identifier": "license-1", "status": "available"}
         publication = _odl_publication(license_document=invalid)
 
-        errors = validate_license_documents(
+        errors = validate_opds_publications(
             [publication],
+            Opds2OrOpds2WithOdlPublication,
             ignore_errors=[],
             display_diff=False,
         )
@@ -434,8 +439,9 @@ class TestValidateLicenseDocuments:
         invalid = {"identifier": "license-1", "status": "available"}
         publication = _odl_publication(license_document=invalid)
 
-        errors = validate_license_documents(
+        errors = validate_opds_publications(
             [publication],
+            Opds2OrOpds2WithOdlPublication,
             ignore_errors=["checkouts"],
             display_diff=False,
         )
@@ -447,8 +453,9 @@ class TestValidateLicenseDocuments:
     ) -> None:
         plain_pub = opds_validation_fixture.valid_publication_dict()
 
-        errors = validate_license_documents(
+        errors = validate_opds_publications(
             [plain_pub],
+            Opds2OrOpds2WithOdlPublication,
             ignore_errors=[],
             display_diff=False,
         )
@@ -458,8 +465,9 @@ class TestValidateLicenseDocuments:
     def test_license_without_embedded_document_is_skipped(self) -> None:
         publication = _odl_publication()  # no license_document set
 
-        errors = validate_license_documents(
+        errors = validate_opds_publications(
             [publication],
+            Opds2OrOpds2WithOdlPublication,
             ignore_errors=[],
             display_diff=False,
         )
@@ -480,11 +488,56 @@ class TestValidateLicenseDocuments:
             license_document={"identifier": "license-invalid", "status": "available"},
         )
 
-        errors = validate_license_documents(
+        errors = validate_opds_publications(
             [valid_pub, invalid_pub],
+            Opds2OrOpds2WithOdlPublication,
             ignore_errors=[],
             display_diff=False,
         )
 
         assert any("license-invalid" in e for e in errors)
-        assert not any("urn:isbn:1111111111" in e for e in errors)
+        # The valid publication's metadata should never appear in errors.
+        assert not any(
+            "Publication identifier: urn:isbn:1111111111" in e for e in errors
+        )
+
+    def test_info_url_resolved_from_license_self_link(self) -> None:
+        """Info-doc URL in errors is read directly off the license's self link
+        (no separate URL map / id() lookup)."""
+        publication = _odl_publication(
+            info_url="https://example.com/licenses/custom/info",
+            license_document={"identifier": "license-1", "status": "available"},
+        )
+
+        errors = validate_opds_publications(
+            [publication],
+            Opds2OrOpds2WithOdlPublication,
+            ignore_errors=[],
+            display_diff=False,
+        )
+
+        assert any(
+            "Info-doc URL: https://example.com/licenses/custom/info" in e
+            for e in errors
+        )
+
+    def test_unknown_info_url_when_self_link_missing(self) -> None:
+        """If the license has no matching self link (e.g. doc was attached
+        manually for an offline check), the URL is reported as <unknown>."""
+        publication = _odl_publication(
+            license_document={"identifier": "license-1", "status": "available"}
+        )
+        publication["licenses"][0]["links"] = [
+            link
+            for link in publication["licenses"][0]["links"]
+            if link.get("rel") != "self"
+        ]
+
+        errors = validate_opds_publications(
+            [publication],
+            Opds2OrOpds2WithOdlPublication,
+            ignore_errors=[],
+            display_diff=False,
+        )
+
+        assert any("Info-doc URL: <unknown>" in e for e in errors)

@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import sys
 from collections.abc import Iterator
-from json import JSONDecodeError
 from typing import Any
 from urllib.parse import urljoin
 
@@ -14,9 +13,9 @@ from rich.progress import MofNCompleteColumn, Progress, SpinnerColumn
 from palace.opds.odl.info import LicenseInfo
 
 from palace.tools.feeds import opds
+from palace.tools.feeds.retry import request_with_retry_async
 
 LICENSE_DOCUMENT_KEY = "license_document"
-_RETRY_LIMIT = 3
 
 
 def iter_license_info_links(
@@ -37,40 +36,6 @@ def iter_license_info_links(
                 ):
                     yield publication, license_, link["href"]
                     break
-
-
-async def _fetch_one(client: httpx.AsyncClient, url: str) -> dict[str, Any]:
-    last_error: str = ""
-    for attempt in range(1, _RETRY_LIMIT + 1):
-        try:
-            response = await client.get(url)
-        except httpx.RequestError as e:
-            last_error = f"Request error: {e}"
-            print(f"License Info fetch error ({attempt}/{_RETRY_LIMIT}): {e} [{url}]")
-            continue
-
-        if response.status_code != 200:
-            last_error = f"Status code: {response.status_code}\nBody: {response.text}"
-            print(
-                f"License Info fetch error ({attempt}/{_RETRY_LIMIT}): "
-                f"{response.status_code} [{url}]"
-            )
-            continue
-
-        try:
-            return response.json()  # type: ignore[no-any-return]
-        except JSONDecodeError as e:
-            last_error = f"JSON decode error: {e}\nBody: {response.text}"
-            print(
-                f"License Info JSON decode error ({attempt}/{_RETRY_LIMIT}): "
-                f"{e} [{url}]"
-            )
-            continue
-
-    print(f"Failed to fetch License Info Document after {_RETRY_LIMIT} attempts.")
-    print(f"URL: {url}")
-    print(last_error)
-    sys.exit(-1)
 
 
 async def fetch_license_documents(
@@ -128,7 +93,9 @@ async def fetch_license_documents(
             # workers don't all race to refresh the token.
             warmup_pub, warmup_license, warmup_href = targets[0]
             warmup_url = urljoin(base_url, warmup_href)
-            warmup_license[LICENSE_DOCUMENT_KEY] = await _fetch_one(client, warmup_url)
+            warmup_license[LICENSE_DOCUMENT_KEY] = await request_with_retry_async(
+                client, warmup_url
+            )
             progress.update(task_id, advance=1)
 
             semaphore = asyncio.Semaphore(connections)
@@ -136,7 +103,9 @@ async def fetch_license_documents(
             async def worker(license_: dict[str, Any], href: str) -> None:
                 async with semaphore:
                     full_url = urljoin(base_url, href)
-                    license_[LICENSE_DOCUMENT_KEY] = await _fetch_one(client, full_url)
+                    license_[LICENSE_DOCUMENT_KEY] = await request_with_retry_async(
+                        client, full_url
+                    )
                     progress.update(task_id, advance=1)
 
             await asyncio.gather(*(worker(lic, href) for _, lic, href in targets[1:]))
