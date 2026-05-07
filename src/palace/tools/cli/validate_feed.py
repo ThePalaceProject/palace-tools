@@ -3,7 +3,6 @@ import json
 import logging
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
 
 import typer
 
@@ -85,12 +84,9 @@ def validate_opds2_odl(
     feeds = opds.fetch(url, username, password, authentication)
 
     if license_documents:
-        publications: list[dict[str, Any]] = []
-        for feed in feeds.values():
-            publications.extend(feed.get("publications", []))
         asyncio.run(
             odl.fetch_license_documents(
-                publications,
+                opds.all_publications(feeds),
                 username=username,
                 password=password,
                 auth_type=authentication,

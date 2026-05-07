@@ -166,12 +166,31 @@ def error_and_exit(response: httpx.Response, detail: str = "") -> None:
     sys.exit(-1)
 
 
-def make_request(session: httpx.Client, url: str) -> dict[str, Any]:
-    return request_with_retry_sync(session, url)
-
-
 def write_json(file: TextIO, data: list[dict[str, Any]]) -> None:
     file.write(json.dumps(data, indent=4))
+
+
+def build_auth(
+    username: str | None,
+    password: str | None,
+    auth_type: AuthType,
+    *,
+    feed_url: str,
+) -> httpx.Auth | None:
+    if username and password:
+        if auth_type == AuthType.BASIC:
+            return httpx.BasicAuth(username, password)
+        if auth_type == AuthType.OAUTH:
+            return OAuthAuth(username, password, feed_url=feed_url)
+        return None
+    if auth_type != AuthType.NONE:
+        print("Username and password are required for authentication")
+        sys.exit(-1)
+    return None
+
+
+def all_publications(feeds: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+    return [pub for feed in feeds.values() for pub in feed.get("publications", [])]
 
 
 def fetch(
@@ -188,19 +207,14 @@ def fetch(
     )
     client.timeout = httpx.Timeout(30.0)
 
-    if username and password:
-        if auth_type == AuthType.BASIC:
-            client.auth = httpx.BasicAuth(username, password)
-        elif auth_type == AuthType.OAUTH:
-            client.auth = OAuthAuth(username, password, feed_url=url)
-    elif auth_type != AuthType.NONE:
-        print("Username and password are required for authentication")
-        sys.exit(-1)
+    auth = build_auth(username, password, auth_type, feed_url=url)
+    if auth is not None:
+        client.auth = auth
 
     feeds = {}
 
     # Get the first page
-    response = make_request(client, url)
+    response = request_with_retry_sync(client, url)
     items = response.get("metadata", {}).get("numberOfItems")
     items_per_page = response.get("metadata", {}).get("itemsPerPage")
 
@@ -216,7 +230,7 @@ def fetch(
     ) as progress:
         download_task = progress.add_task(f"Downloading Feed", total=pages)
         while next_url is not None:
-            response = make_request(client, next_url)
+            response = request_with_retry_sync(client, next_url)
             feeds[next_url] = response
             next_url = None
             for link in response["links"]:

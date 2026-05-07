@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import sys
 from collections.abc import Iterator
 from typing import Any
 from urllib.parse import urljoin
@@ -58,15 +57,7 @@ async def fetch_license_documents(
     if not targets:
         return
 
-    auth: httpx.Auth | None = None
-    if username and password:
-        if auth_type == opds.AuthType.BASIC:
-            auth = httpx.BasicAuth(username, password)
-        elif auth_type == opds.AuthType.OAUTH:
-            auth = opds.OAuthAuth(username, password, feed_url=base_url)
-    elif auth_type != opds.AuthType.NONE:
-        print("Username and password are required for authentication")
-        sys.exit(-1)
+    auth = opds.build_auth(username, password, auth_type, feed_url=base_url)
 
     headers = {
         "Accept": f"{LicenseInfo.content_type()}, application/json;q=0.9, */*;q=0.1",

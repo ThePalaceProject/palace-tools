@@ -131,10 +131,7 @@ def download_opds(
 ) -> None:
     """Download OPDS 2 feed."""
     feeds = opds.fetch(url, username, password, authentication)
-    publications = []
-    for feed in feeds.values():
-        # Convert the feed to a list of publications
-        publications.extend(feed.get("publications", []))
+    publications = opds.all_publications(feeds)
 
     with output_file.open("w") as file:
         opds.write_json(file, publications)
@@ -168,9 +165,7 @@ def download_opds2_odl(
 ) -> None:
     """Download OPDS 2 + ODL feed including License Info Documents."""
     feeds = opds.fetch(url, username, password, authentication)
-    publications = []
-    for feed in feeds.values():
-        publications.extend(feed.get("publications", []))
+    publications = opds.all_publications(feeds)
 
     if license_documents:
         asyncio.run(
