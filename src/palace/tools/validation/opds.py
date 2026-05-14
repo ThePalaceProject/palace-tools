@@ -1,6 +1,7 @@
 import json
 import logging
 import textwrap
+from copy import deepcopy
 from difflib import context_diff
 from typing import Any
 
@@ -25,6 +26,16 @@ def _should_ignore_error(error: ValidationError, ignore_errors: list[str]) -> bo
             return True
 
     return False
+
+
+def _strip_embedded_license_documents(data: dict[str, Any]) -> dict[str, Any]:
+    """
+    Return a deep copy of ``data`` without embedded License Info Documents.
+    """
+    data = deepcopy(data)
+    for license_ in data.get("licenses") or []:
+        license_.pop(LICENSE_DOCUMENT_KEY, None)
+    return data
 
 
 def _diff_original_parsed(original: dict[str, Any], parsed: BaseModel) -> list[str]:
@@ -247,7 +258,11 @@ def validate_opds_publications(
             warnings = "".join(log_capture.get_messages()) if log_capture else None
 
             if display_diff:
-                diff = "\n".join(_diff_original_parsed(publication_dict, publication))
+                diff = "\n".join(
+                    _diff_original_parsed(
+                        _strip_embedded_license_documents(publication_dict), publication
+                    )
+                )
             else:
                 diff = None
 
