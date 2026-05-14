@@ -80,15 +80,6 @@ async def fetch_license_documents(
                 "Fetching License Info Documents", total=len(targets)
             )
 
-            # Warm up auth with a single sequential request so concurrent
-            # workers don't all race to refresh the token.
-            warmup_pub, warmup_license, warmup_href = targets[0]
-            warmup_url = urljoin(base_url, warmup_href)
-            warmup_license[LICENSE_DOCUMENT_KEY] = await request_with_retry_async(
-                client, warmup_url
-            )
-            progress.update(task_id, advance=1)
-
             semaphore = asyncio.Semaphore(connections)
 
             async def worker(license_: dict[str, Any], href: str) -> None:
@@ -99,4 +90,4 @@ async def fetch_license_documents(
                     )
                     progress.update(task_id, advance=1)
 
-            await asyncio.gather(*(worker(lic, href) for _, lic, href in targets[1:]))
+            await asyncio.gather(*(worker(lic, href) for _, lic, href in targets))
