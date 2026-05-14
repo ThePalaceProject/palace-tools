@@ -6,7 +6,7 @@ from xml.dom import minidom
 import typer
 import xmltodict
 
-from palace.tools.feeds import axis, opds, opds1, overdrive
+from palace.tools.feeds import axis, odl, opds, opds1, overdrive
 from palace.tools.utils.typer import run_typer_app_as_main
 
 app = typer.Typer()
@@ -131,10 +131,53 @@ def download_opds(
 ) -> None:
     """Download OPDS 2 feed."""
     feeds = opds.fetch(url, username, password, authentication)
-    publications = []
-    for feed in feeds.values():
-        # Convert the feed to a list of publications
-        publications.extend(feed.get("publications", []))
+    publications = opds.all_publications(feeds)
+
+    with output_file.open("w") as file:
+        opds.write_json(file, publications)
+
+
+@app.command("opds2-odl")
+def download_opds2_odl(
+    username: str = typer.Option(None, "--username", "-u", help="Username"),
+    password: str = typer.Option(None, "--password", "-p", help="Password"),
+    authentication: opds.AuthType = typer.Option(
+        opds.AuthType.NONE.value, "--auth", "-a", help="Authentication type"
+    ),
+    license_documents: bool = typer.Option(
+        True,
+        "--license-documents/--no-license-documents",
+        help=(
+            "Fetch the License Info Document for each license and embed it "
+            "under a 'license_document' key on the license."
+        ),
+    ),
+    connections: int = typer.Option(
+        20,
+        "-c",
+        "--connections",
+        help="Number of concurrent connections used to fetch License Info Documents.",
+    ),
+    url: str = typer.Argument(..., help="URL of feed", metavar="URL"),
+    output_file: Path = typer.Argument(
+        ..., help="Output file", writable=True, file_okay=True, dir_okay=False
+    ),
+) -> None:
+    """Download OPDS 2 + ODL feed including License Info Documents."""
+    feeds = opds.fetch(url, username, password, authentication)
+    publications = opds.all_publications(feeds)
+
+    if license_documents:
+        asyncio.run(
+            odl.fetch_license_documents(
+                publications,
+                username=username,
+                password=password,
+                auth_type=authentication,
+                connections=connections,
+                base_url=url,
+            )
+        )
 
     with output_file.open("w") as file:
         opds.write_json(file, publications)

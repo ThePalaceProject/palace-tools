@@ -5,11 +5,14 @@ import json
 import math
 import sys
 from collections import defaultdict, deque
+from json import JSONDecodeError
 from typing import Any
 
 import httpx
 from httpx import URL, HTTPStatusError, Limits, RequestError, Response, Timeout
 from rich.progress import MofNCompleteColumn, Progress, SpinnerColumn
+
+from palace.tools.feeds.retry import MAX_ATTEMPTS
 
 QA_BASE_URL = "https://integration.api.overdrive.com"
 PROD_BASE_URL = "https://api.overdrive.com"
@@ -209,6 +212,7 @@ async def fetch(
                 events_path = EVENTS_ENDPOINT % {"collection_token": collection_token}
 
                 for req in done:
+                    response: Response | None = None
                     try:
                         response = await req
                         process_request(
@@ -221,23 +225,31 @@ async def fetch(
                             urls,
                         )
                         progress.update(download_task, advance=1)
-                    except (RequestError, HTTPStatusError) as e:
-                        print(f"Request error: {e}")
-                        print(f"URL: {e.request.url}")
-                        request_url = str(e.request.url)
-                        retried_requests[request_url] += 1
-
-                        if retried_requests[request_url] > 3:
-                            print("Too many retries. Exiting.")
-                            sys.exit(-1)
+                    except (RequestError, HTTPStatusError, JSONDecodeError) as e:
+                        if isinstance(e, (RequestError, HTTPStatusError)):
+                            request_url = str(e.request.url)
                         else:
-                            if skip_not_found and ("404 Not Found") in str(e):
-                                print(f'url "{e.request.url}" NOT FOUND. Skipping...')
-                            else:
-                                print(
-                                    f"Retrying request (attempt {retried_requests[request_url]}/3)"
-                                )
-                                urls.appendleft(request_url)
+                            # JSONDecodeError: the await succeeded so response is set.
+                            assert response is not None
+                            request_url = str(response.url)
+                        retried_requests[request_url] += 1
+                        attempt = retried_requests[request_url]
+                        print(
+                            f"Request error ({attempt}/{MAX_ATTEMPTS}): {e} [{request_url}]"
+                        )
+
+                        if attempt >= MAX_ATTEMPTS:
+                            print(f"Giving up after {MAX_ATTEMPTS} attempts.")
+                            sys.exit(-1)
+
+                        if (
+                            skip_not_found
+                            and isinstance(e, HTTPStatusError)
+                            and e.response.status_code == 404
+                        ):
+                            print(f'url "{request_url}" NOT FOUND. Skipping...')
+                        else:
+                            urls.appendleft(request_url)
                     if urls:
                         make_request(client, urls, pending_requests)
 
