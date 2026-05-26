@@ -31,7 +31,7 @@ class HTTPXAsyncClient(AsyncClient):
 
     @classmethod
     def with_existing_client(
-        cls, *args: Any, existing_client: Self | None = None, **kwargs: Any
+        cls, *args: Any, existing_client: AsyncClient | None = None, **kwargs: Any
     ) -> Self:
         """Return an instance of our self.
 
