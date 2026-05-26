@@ -159,7 +159,7 @@ async def _get_patron_token(
             basic_auth_header = BasicAuthToken.from_username_and_password(
                 username, password
             ).as_http_headers
-            [authentication_link] = auth_mech.links.get_collection(rel="authenticate")
+            authentication_link = auth_mech.links.get(rel="authenticate", raising=True)
             async with HTTPXAsyncClient.with_existing_client(
                 existing_client=http_client
             ) as client:
