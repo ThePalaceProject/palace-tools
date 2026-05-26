@@ -6,8 +6,9 @@ import json
 import httpx
 import typer
 
+from palace.opds.opds2 import PublicationFeed
+
 from palace.tools.constants import DEFAULT_REGISTRY_URL, OpdsEnum
-from palace.tools.models.api.opds2 import OPDS2Feed
 from palace.tools.models.internal.bookshelf import print_bookshelf_summary
 from palace.tools.roles.patron import authenticate
 from palace.tools.utils.http.async_client import HTTPXAsyncClient
@@ -130,9 +131,9 @@ def patron_bookshelf(
         print(response.text)
         return
     # If we get this far, we have an OPDSv2 feed and should validate it.
-    bookshelf = OPDS2Feed.model_validate(response.json())
+    bookshelf = PublicationFeed.model_validate(response.json())
     if as_json:
-        print(json.dumps(bookshelf.model_dump(), indent=2))
+        print(json.dumps(bookshelf.serialize(), indent=2))
     else:
         print_bookshelf_summary(bookshelf)
 

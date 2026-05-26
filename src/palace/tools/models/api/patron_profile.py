@@ -1,6 +1,8 @@
 from pydantic import Field
 
-from palace.tools.models.api.opds2 import OPDS2Link
+from palace.opds.opds2 import Link
+from palace.opds.types.link import CompactCollection
+
 from palace.tools.models.api.util import ApiBaseModel
 
 
@@ -21,5 +23,5 @@ class PatronProfileDocument(ApiBaseModel):
         ..., alias="simplified:authorization_identifier"
     )
     settings: Settings
-    links: list[OPDS2Link]
+    links: CompactCollection[Link]
     drm: list[DrmItem]
