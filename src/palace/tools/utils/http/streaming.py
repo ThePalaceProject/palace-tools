@@ -2,7 +2,9 @@ from collections.abc import Callable, Sequence
 from typing import Any, BinaryIO, ContextManager, TypeVar
 
 import rich.progress
-from httpx import AsyncClient, Response
+from httpx import USE_CLIENT_DEFAULT, AsyncClient, Response
+from httpx._client import UseClientDefault
+from httpx._types import AuthTypes
 
 from palace.tools.utils.http.async_client import HTTPXAsyncClient
 
@@ -49,9 +51,15 @@ async def streaming_fetch(
     ) = None,
     http_client: AsyncClient | None = None,
     raise_for_status: bool = False,
+    follow_redirects: bool = True,
+    auth: AuthTypes | UseClientDefault | None = USE_CLIENT_DEFAULT,
 ) -> Response:
-    async with HTTPXAsyncClient.with_existing_client(http_client) as client:
-        async with client.stream("GET", url=url) as response:
+    async with HTTPXAsyncClient.with_existing_client(
+        existing_client=http_client
+    ) as client:
+        async with client.stream(
+            "GET", url=url, follow_redirects=follow_redirects, auth=auth
+        ) as response:
             if raise_for_status:
                 response.raise_for_status()
             if response.headers.get("Content-Length"):
@@ -82,6 +90,8 @@ async def streaming_fetch_with_progress(
     progress_updaters: Callable[[int], Any] | list[Callable[[int], Any]] | None = None,
     http_client: AsyncClient | None = None,
     raise_for_status: bool = False,
+    follow_redirects: bool = True,
+    auth: AuthTypes | UseClientDefault | None = USE_CLIENT_DEFAULT,
 ) -> Response:
     _progress_bar: ContextManager[rich.progress.Progress] | None = None
     _task_label: str | None = None
@@ -102,6 +112,8 @@ async def streaming_fetch_with_progress(
             total_setters=total_setters,
             progress_updaters=progress_updaters,
             raise_for_status=raise_for_status,
+            follow_redirects=follow_redirects,
+            auth=auth,
         )
 
     with _progress_bar as progress:
@@ -122,4 +134,6 @@ async def streaming_fetch_with_progress(
             total_setters=total_setters,
             progress_updaters=progress_updaters,
             raise_for_status=raise_for_status,
+            follow_redirects=follow_redirects,
+            auth=auth,
         )
