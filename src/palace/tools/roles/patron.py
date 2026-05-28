@@ -17,7 +17,6 @@ from palace.tools.models.api.authentication_document import (
     AuthenticationDocument,
     AuthenticationMechanism,
 )
-from palace.tools.models.api.opds2 import match_links
 from palace.tools.models.api.patron_profile import PatronProfileDocument
 from palace.tools.services.registry import LibraryRegistryService
 from palace.tools.utils.http.async_client import HTTPXAsyncClient, validate_response
@@ -160,10 +159,7 @@ async def _get_patron_token(
             basic_auth_header = BasicAuthToken.from_username_and_password(
                 username, password
             ).as_http_headers
-            [authentication_link] = match_links(
-                auth_mech.links,
-                lambda link: link.rel == "authenticate",
-            )
+            authentication_link = auth_mech.links.get(rel="authenticate", raising=True)
             async with HTTPXAsyncClient.with_existing_client(
                 existing_client=http_client
             ) as client:

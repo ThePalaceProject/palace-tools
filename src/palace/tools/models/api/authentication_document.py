@@ -3,8 +3,12 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+from pydantic import Field
+
+from palace.opds.opds2 import Link
+from palace.opds.types.link import CompactCollection
+
 from palace.tools.constants import PATRON_BOOKSHELF_REL, PATRON_PROFILE_REL
-from palace.tools.models.api.opds2 import OPDS2Link, match_links
 from palace.tools.models.api.util import ApiBaseModel
 
 
@@ -42,7 +46,7 @@ class AuthenticationMechanism(ApiBaseModel):
     description: str
     labels: Labels
     inputs: Mapping[str, InputMethod]
-    links: list[OPDS2Link] = []
+    links: CompactCollection[Link] = Field(default_factory=CompactCollection)
     type: str
 
 
@@ -61,7 +65,7 @@ class AuthenticationDocument(ApiBaseModel):
     title: str
     authentication: list[AuthenticationMechanism]
     features: Features
-    links: list[OPDS2Link]
+    links: CompactCollection[Link]
     announcements: list[Any]
     service_description: str
     public_key: PublicKey
@@ -69,15 +73,9 @@ class AuthenticationDocument(ApiBaseModel):
     # web_color_scheme: WebColorScheme
 
     @property
-    def patron_profile_links(self) -> list[OPDS2Link]:
-        return match_links(
-            self.links,
-            lambda link: link.rel == PATRON_PROFILE_REL,
-        )
+    def patron_profile_links(self) -> CompactCollection[Link]:
+        return self.links.get_collection(rel=PATRON_PROFILE_REL)
 
     @property
-    def patron_bookshelf_links(self) -> list[OPDS2Link]:
-        return match_links(
-            self.links,
-            lambda link: link.rel == PATRON_BOOKSHELF_REL,
-        )
+    def patron_bookshelf_links(self) -> CompactCollection[Link]:
+        return self.links.get_collection(rel=PATRON_BOOKSHELF_REL)

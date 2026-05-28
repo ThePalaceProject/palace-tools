@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from palace.tools.constants import OPDS_AUTH_DOC_REL, OPDS_AUTH_DOC_TYPE
-from palace.tools.models.api.opds2 import match_links
 from palace.tools.utils.http.async_client import HTTPXAsyncClient, validate_response
 
 
@@ -30,12 +29,14 @@ class LibraryRegistryService:
             library = libraries_by_name.get(for_lookup(library_name))
             if library is None:
                 raise ValueError(f"Library '{library_name}' not found.")
-            [auth_doc_link] = match_links(
-                library.get("links", []),
-                lambda link: link.get("rel") == OPDS_AUTH_DOC_REL
-                or link.get("type") == OPDS_AUTH_DOC_TYPE,
-            )
-            return auth_doc_link.get("href") if auth_doc_link is not None else None
+            links: list[dict[str, str]] = library.get("links", [])
+            [auth_doc_link] = [
+                link
+                for link in links
+                if link.get("rel") == OPDS_AUTH_DOC_REL
+                or link.get("type") == OPDS_AUTH_DOC_TYPE
+            ]
+            return auth_doc_link.get("href")
 
 
 def for_lookup(value: str) -> str:
