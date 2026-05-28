@@ -11,9 +11,9 @@ from typing import BinaryIO, TextIO
 
 import typer
 
+from palace.opds.lcp.license import LicenseDocument
+
 from palace.tools.constants import LCP_AUDIOBOOK_TYPE, LCP_LICENSE_PUBLICATION_REL
-from palace.tools.models.api.opds2 import match_links
-from palace.tools.models.api.readium_lcp_license_v1 import LCPLicenseDocument
 from palace.tools.utils.http.async_client import HTTPXAsyncClient
 from palace.tools.utils.http.auth_token import BaseAuthorizationToken, BasicAuthToken
 from palace.tools.utils.http.streaming import streaming_fetch_with_progress
@@ -145,11 +145,9 @@ async def process_command(
         if license_file:
             license_file.write(response.text)
 
-        lcp_license = LCPLicenseDocument.model_validate(response.json())
-        lcp_audiobook_links = match_links(
-            lcp_license.links,
-            lambda lnk: lnk.rel == LCP_LICENSE_PUBLICATION_REL
-            and lnk.type == LCP_AUDIOBOOK_TYPE,
+        lcp_license = LicenseDocument.model_validate(response.json())
+        lcp_audiobook_links = lcp_license.links.get_collection(
+            rel=LCP_LICENSE_PUBLICATION_REL, type=LCP_AUDIOBOOK_TYPE
         )
         if not lcp_audiobook_links:
             return
