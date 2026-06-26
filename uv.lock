@@ -532,7 +532,7 @@ wheels = [
 
 [[package]]
 name = "palace-opds"
-version = "43.1.1"
+version = "44.0.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "palace-util" },
@@ -540,9 +540,9 @@ dependencies = [
     { name = "pydantic" },
     { name = "uritemplate" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/8a/aa/d248b94aa20b60ad6f7912c596340ed4d90b0e11927812f1383c3322983d/palace_opds-43.1.1.tar.gz", hash = "sha256:b6709019d63e08d4d98802e63fd8fb4be192292934c5e23601deb7cbe153a5ba", size = 26328, upload-time = "2026-06-04T18:45:50.109Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/5a/23/40fe6943ed2fcb144a0cd3ed4354aa2a5a41b896f752c873a1a7217a531c/palace_opds-44.0.2.tar.gz", hash = "sha256:90296b316408d76c4732ce50d73973b8297019ebb03baa0ff9280190a20a6a57", size = 26326, upload-time = "2026-06-22T20:11:25.086Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/6c/d7/f1692d30eef2250626a2ed001a5f81117d99d1576a998b8dfbd2ce12298b/palace_opds-43.1.1-py3-none-any.whl", hash = "sha256:5285acfdb111a5be54409c48d8c734265ad5b08a7e1b83c3b79a57a347873fa5", size = 36680, upload-time = "2026-06-04T18:45:48.851Z" },
+    { url = "https://files.pythonhosted.org/packages/d6/0d/29ed502bfc5d5a9a8a97a9d9ca3726e3fb4fb542a30ab33671b595749a1d/palace_opds-44.0.2-py3-none-any.whl", hash = "sha256:2b797da644a86c8cff4a256538b0ebe57e94ec39def1c321db448e4fb89a46aa", size = 36679, upload-time = "2026-06-22T20:11:23.702Z" },
 ]
 
 [[package]]
@@ -582,7 +582,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.28.1,<0.29" },
     { name = "jwcrypto", specifier = ">=1.5.6,<2" },
     { name = "mutagen", specifier = ">=1.47.0,<2" },
-    { name = "palace-opds", specifier = ">=41.0.0,<44" },
+    { name = "palace-opds", specifier = ">=41.0.0,<45" },
     { name = "pydantic", specifier = ">=2.11.7,<3" },
     { name = "python-vlc", specifier = ">=3.0.20123,<4" },
     { name = "rich", specifier = ">=15.0.0,<16" },
@@ -607,14 +607,14 @@ dev = [
 
 [[package]]
 name = "palace-util"
-version = "43.1.1"
+version = "44.0.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "python-dateutil" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/08/e7/2d6c7dbc08fc3c6940d291f3de8533e1e551af6c57cf9b214bb8b52cbd8b/palace_util-43.1.1.tar.gz", hash = "sha256:79802f33494ff8a9613510cb250e469a5284f073097d1ca5177fbdd0e898a09d", size = 6051, upload-time = "2026-06-04T18:45:41.38Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e9/d0/53762e4ab0785e6cc0149c338b4fda0ca94ede7b3b75466c3eb7793d1fb2/palace_util-44.0.2.tar.gz", hash = "sha256:1bda8402c05dc43820bb883d1439509d0a3dcf55f933077a42730bbcde906c13", size = 6049, upload-time = "2026-06-22T20:11:24.9Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f7/d1/9230b7c901e435760c79c2b88a54d6079e1d0933ec6a1e50ee3e1ba4d61b/palace_util-43.1.1-py3-none-any.whl", hash = "sha256:5bb68a7896e4092fe76d9f3ff0ffeb72f56889690a236e8eee3fc4671a646f57", size = 6988, upload-time = "2026-06-04T18:45:40.24Z" },
+    { url = "https://files.pythonhosted.org/packages/5d/c7/13109ed11aeffe06ad72b4de32b14b69c64cfc2b0566301601cf200de2f3/palace_util-44.0.2-py3-none-any.whl", hash = "sha256:48aef741c3f3a764c1e9af031a7cc4a155796826836d97d844abd32fc7ead2b4", size = 6989, upload-time = "2026-06-22T20:11:23.841Z" },
 ]
 
 [[package]]
