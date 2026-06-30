@@ -28,7 +28,7 @@ dependencies = [
     "python-vlc>=3.0.20123,<4",
     "rich>=15.0.0,<16",
     "textual>=8.0.0,<9",
-    "typer>=0.24.1,<0.26",
+    "typer>=0.24.1,<0.27",
     "xmltodict>=1.0.2,<2",
 ]
 description = "Palace Tools"
