@@ -240,6 +240,56 @@ def validate_opds2_publications(
     )
 
 
+@app.command("opds2-odl-publications")
+def validate_opds2_odl_publications(
+    ignore: list[str] = typer.Option(
+        [],
+        help="Ignore these errors (Can be specified multiple times)",
+        metavar="ERROR",
+    ),
+    diff: bool = typer.Option(
+        False, "--diff", "-d", help="Show a diff between the parsed and original JSON."
+    ),
+    no_warnings: bool = typer.Option(
+        False, "--no-warnings", help="Disable capturing and displaying parser warnings."
+    ),
+    input_file: Path = typer.Argument(
+        ...,
+        help="File containing the feed to validate",
+        metavar="INPUT_FILE",
+        exists=True,
+        readable=True,
+        file_okay=True,
+        dir_okay=False,
+    ),
+    output_file: Path = typer.Argument(
+        None,
+        help="Output the validation results to a file. If not given, the results will be printed to stdout.",
+        metavar="OUTPUT_FILE",
+        writable=True,
+        file_okay=True,
+        dir_okay=False,
+    ),
+) -> None:
+    """Validate OPDS 2 + ODL publications from a file.
+
+    The file should contain an array of publication objects, like the "publications" field in an OPDS 2 + ODL feed.
+    This matches the format output by the `download-feed opds2-odl` command, including any License Info Documents
+    embedded under the "license_document" key.
+    """
+    with input_file.open("r") as file:
+        data = json.load(file)
+    validate(
+        output_file,
+        validate_opds_publications,
+        data,
+        odl_models.Opds2OrOpds2WithOdlPublication,
+        ignore_errors=ignore,
+        display_diff=diff,
+        capture_warnings=not no_warnings,
+    )
+
+
 def main() -> None:
     run_typer_app_as_main(app, prog_name="validate-feed")
 
