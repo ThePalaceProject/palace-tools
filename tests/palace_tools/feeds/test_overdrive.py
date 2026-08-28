@@ -417,10 +417,10 @@ class TestTokenRequestFailures:
             async with httpx.AsyncClient(
                 auth=overdrive.OverdriveAuth("key", "secret")
             ) as client:
-                with pytest.raises(SystemExit) as exc_info:
+                with pytest.raises(overdrive.OverdriveError) as exc_info:
                     await client.get(API_URL)
 
-        assert exc_info.value.code == -1
+        assert f"Giving up after {MAX_ATTEMPTS} attempts." in str(exc_info.value)
         assert token_route.call_count == MAX_ATTEMPTS
 
     async def test_bad_credentials_are_not_retried(self) -> None:
@@ -431,10 +431,10 @@ class TestTokenRequestFailures:
             async with httpx.AsyncClient(
                 auth=overdrive.OverdriveAuth("key", "secret")
             ) as client:
-                with pytest.raises(SystemExit) as exc_info:
+                with pytest.raises(overdrive.OverdriveError) as exc_info:
                     await client.get(API_URL)
 
-        assert exc_info.value.code == -1
+        assert "invalid_client" in str(exc_info.value)
         assert token_route.call_count == 1
 
     def test_cannot_be_used_with_a_sync_client(self) -> None:
@@ -444,27 +444,33 @@ class TestTokenRequestFailures:
                 client.get(API_URL)
 
 
+async def fetch_feed() -> list[dict[str, Any]]:
+    """Harvest whatever the router currently in force is serving."""
+    return await overdrive.fetch(
+        f"https://{API_HOST}",
+        "key",
+        "secret",
+        library_id="1234",
+        parent_library_id=None,
+        fetch_metadata=True,
+        fetch_availability=False,
+        connections=4,
+        skip_not_found=False,
+    )
+
+
+async def harvest(fake: FakeFeed) -> list[dict[str, Any]]:
+    async with overdrive_api(fake):
+        return await fetch_feed()
+
+
 class TestFetch:
     """The full harvest loop, which is where an expiring token first bit us."""
-
-    async def _harvest(self, fake: FakeFeed) -> list[dict[str, Any]]:
-        async with overdrive_api(fake):
-            return await overdrive.fetch(
-                f"https://{API_HOST}",
-                "key",
-                "secret",
-                library_id="1234",
-                parent_library_id=None,
-                fetch_metadata=True,
-                fetch_availability=False,
-                connections=4,
-                skip_not_found=False,
-            )
 
     async def test_harvests_every_product(self) -> None:
         fake = FakeFeed(item_count=10, page_size=5)
 
-        products = await self._harvest(fake)
+        products = await harvest(fake)
 
         assert len(products) == 10
         assert all("metadata" in product for product in products)
@@ -479,10 +485,141 @@ class TestFetch:
         # revocation onwards failed with a 401 until the retry budget ran out.
         fake = FakeFeed(item_count=10, page_size=5, revoke_after=4)
 
-        products = await self._harvest(fake)
+        products = await harvest(fake)
 
         assert len(products) == 10
         assert all("metadata" in product for product in products)
         # The token really was rejected, and replaced exactly once.
         assert fake.unauthorized > 0
         assert fake.token_requests == 2
+
+
+class BrokenMetadataFeed(FakeFeed):
+    """A feed with one product whose metadata request never succeeds."""
+
+    def __init__(self, item_count: int, page_size: int, broken_product: str) -> None:
+        super().__init__(item_count, page_size)
+        self.broken_product = broken_product
+
+    def respond(self, request: httpx.Request) -> httpx.Response:
+        if self._is_broken(request):
+            return httpx.Response(500, json={"error": "server error"})
+        return super().respond(request)
+
+    def _is_broken(self, request: httpx.Request) -> bool:
+        path = request.url.path
+        return path.endswith("/metadata") and path.split("/")[-2] == self.broken_product
+
+
+class ConfusedFeed(FakeFeed):
+    """A feed that answers a metadata request with a product it never listed.
+
+    Stands in for the unforeseen: a response the harvest has no idea what to do
+    with, which blows up somewhere other than the paths that expect to fail.
+    """
+
+    def respond(self, request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/metadata"):
+            return httpx.Response(200, json={"id": "PID9999", "title": "Who?"})
+        return super().respond(request)
+
+
+class TestPartialHarvest:
+    """A harvest that ends early hands back what it downloaded.
+
+    A harvest runs for hours, so whatever it collected before it died is worth
+    keeping, even though the feed is incomplete.
+    """
+
+    async def test_a_request_that_never_succeeds_keeps_the_rest(self) -> None:
+        fake = BrokenMetadataFeed(item_count=10, page_size=5, broken_product="PID0003")
+
+        with pytest.raises(overdrive.HarvestAborted) as exc_info:
+            await harvest(fake)
+
+        aborted = exc_info.value
+        assert f"Giving up after {MAX_ATTEMPTS} attempts." in str(aborted)
+        # Every product the feed listed is here, with the metadata of all but
+        # the one whose request kept failing.
+        assert sorted(product["id"] for product in aborted.products) == [
+            f"PID{index:04d}" for index in range(10)
+        ]
+        assert sorted(
+            product["id"] for product in aborted.products if "metadata" in product
+        ) == [f"PID{index:04d}" for index in range(10) if index != 3]
+
+    async def test_a_token_that_cannot_be_refreshed_keeps_the_rest(self) -> None:
+        """The failure this is really for: a token expires hours into a
+        harvest, and the token endpoint is down when we go to replace it."""
+        fake = FakeFeed(item_count=10, page_size=5, revoke_after=5)
+        issued = 0
+
+        def issue_one_token(request: httpx.Request) -> httpx.Response:
+            nonlocal issued
+            issued += 1
+            if issued > 1:
+                return httpx.Response(503)
+            return fake.issue_token(request)
+
+        async with respx.mock(assert_all_called=False) as router:
+            router.post(overdrive.TOKEN_ENDPOINT).mock(side_effect=issue_one_token)
+            router.get(host=API_HOST).mock(side_effect=fake.respond)
+
+            with pytest.raises(overdrive.HarvestAborted) as exc_info:
+                await fetch_feed()
+
+        aborted = exc_info.value
+        assert f"Giving up after {MAX_ATTEMPTS} attempts." in str(aborted)
+        # The token really was rejected, and really couldn't be replaced.
+        assert fake.unauthorized > 0
+        assert issued > 1
+        # The products listed by the pages fetched before the token expired.
+        assert aborted.products
+
+    async def test_an_unforeseen_error_keeps_the_rest(self) -> None:
+        fake = ConfusedFeed(item_count=10, page_size=5)
+
+        with pytest.raises(overdrive.HarvestAborted) as exc_info:
+            await harvest(fake)
+
+        aborted = exc_info.value
+        assert "KeyError" in str(aborted)
+        assert len(aborted.products) == 10
+
+    async def test_an_interrupted_harvest_keeps_what_it_had(self) -> None:
+        """Ctrl-C hours into a harvest shouldn't throw the hours away.
+
+        ``asyncio.run`` turns a Ctrl-C into a cancellation of the coroutine it
+        is running, which is what this does to it by hand.
+        """
+        fake = FakeFeed(item_count=10, page_size=5)
+        pages_served = asyncio.Event()
+
+        def note_page(request: httpx.Request) -> httpx.Response:
+            response = fake.respond(request)
+            if request.url.path.endswith("/metadata"):
+                pages_served.set()
+            return response
+
+        async with respx.mock(assert_all_called=False) as router:
+            router.post(overdrive.TOKEN_ENDPOINT).mock(side_effect=fake.issue_token)
+            router.get(host=API_HOST).mock(side_effect=note_page)
+
+            harvesting = asyncio.create_task(fetch_feed())
+            # Interrupt once the pages are in and metadata is being fetched.
+            await pages_served.wait()
+            harvesting.cancel()
+
+            with pytest.raises(overdrive.HarvestAborted) as exc_info:
+                await harvesting
+
+        aborted = exc_info.value
+        assert str(aborted) == "Harvest interrupted."
+        # Every product the pages listed, most of them without metadata yet.
+        assert len(aborted.products) == 10
+
+    async def test_a_harvest_that_finishes_does_not_raise(self) -> None:
+        """The abort handling shouldn't fire on the way out of a good harvest."""
+        products = await harvest(FakeFeed(item_count=10, page_size=5))
+
+        assert len(products) == 10

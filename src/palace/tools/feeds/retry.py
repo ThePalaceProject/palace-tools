@@ -1,9 +1,12 @@
 """Shared HTTP retry policy for feed downloads.
 
-Used by the OPDS, OPDS+ODL, and Overdrive feed clients. Retries on transient
-failures (network errors, non-200 responses, malformed JSON bodies) up to
+Used by the OPDS and OPDS+ODL feed clients. Retries on transient failures
+(network errors, non-200 responses, malformed JSON bodies) up to
 ``MAX_ATTEMPTS`` total attempts (the initial request counts as attempt 1).
 On terminal failure the process exits with code ``-1``.
+
+The Overdrive client retries requests itself, so that it can keep hold of a
+partly downloaded feed, but shares the ``MAX_ATTEMPTS`` limit.
 """
 
 from __future__ import annotations
