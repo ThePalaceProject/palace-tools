@@ -570,6 +570,15 @@ class RepeatingFeed(FakeFeed):
         return httpx.Response(200, json=page)
 
 
+class NoMetadataFeed(FakeFeed):
+    """A feed that has no metadata for any of its products."""
+
+    def respond(self, request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/metadata"):
+            return httpx.Response(404, json={"error": "not found"})
+        return super().respond(request)
+
+
 class ConfusedFeed(FakeFeed):
     """A feed that answers a metadata request with a product it never listed.
 
@@ -761,8 +770,6 @@ class TestStreaming:
         ]
 
     async def test_a_skipped_request_does_not_strand_its_product(self) -> None:
-        """A product whose metadata 404s is never getting it, so it shouldn't
-        be held in memory waiting for it."""
         fake = BrokenMetadataFeed(
             item_count=10, page_size=5, broken_product="PID0003", status=404
         )
@@ -775,6 +782,20 @@ class TestStreaming:
         assert [product["id"] for product in products if "metadata" not in product] == [
             "PID0003"
         ]
+
+    async def test_skipped_products_are_released_as_they_are_skipped(
+        self, held_at_once: list[int]
+    ) -> None:
+        """A product whose only request 404s is never getting it, so it has to
+        be let go of there and then rather than held to the end of the run."""
+        fake = NoMetadataFeed(item_count=100, page_size=10)
+
+        products = await harvest(fake, connections=2, skip_not_found=True)
+
+        assert len(products) == 100
+        assert not any("metadata" in product for product in products)
+        # Held at once stays near the pages in flight, nowhere near all 100.
+        assert max(held_at_once) < 50
 
 
 class TestPendingProducts:
