@@ -1,6 +1,7 @@
 import asyncio
 import json
 from pathlib import Path
+from typing import Any
 from xml.dom import minidom
 
 import typer
@@ -10,6 +11,11 @@ from palace.tools.feeds import axis, odl, opds, opds1, overdrive
 from palace.tools.utils.typer import run_typer_app_as_main
 
 app = typer.Typer()
+
+
+def _write_products(output_file: Path, products: list[dict[str, Any]]) -> None:
+    with output_file.open("w") as file:
+        file.write(json.dumps(products, indent=4))
 
 
 @app.command("axis")
@@ -84,23 +90,30 @@ def download_overdrive(
 ) -> None:
     """Download Overdrive feed."""
     base_url = overdrive.QA_BASE_URL if qa_endpoint else overdrive.PROD_BASE_URL
-    products = asyncio.run(
-        overdrive.fetch(
-            base_url,
-            client_key,
-            client_secret,
-            library_id,
-            parent_library_id,
-            fetch_metadata,
-            fetch_availability,
-            connections,
-            skip_not_found,
-            use_consortial_plus_advantage_feed,
+    try:
+        products = asyncio.run(
+            overdrive.fetch(
+                base_url,
+                client_key,
+                client_secret,
+                library_id,
+                parent_library_id,
+                fetch_metadata,
+                fetch_availability,
+                connections,
+                skip_not_found,
+                use_consortial_plus_advantage_feed,
+            )
         )
-    )
+    except overdrive.HarvestAborted as e:
+        # A harvest takes hours, so write out however much of the feed it got
+        # to rather than throwing all of it away over one failed request.
+        print(e)
+        _write_products(output_file, e.products)
+        print(f"Wrote {len(e.products)} partially harvested products to {output_file}.")
+        raise typer.Exit(code=-1)
 
-    with output_file.open("w") as file:
-        file.write(json.dumps(products, indent=4))
+    _write_products(output_file, products)
 
 
 @app.command("overdrive-url")
@@ -112,7 +125,11 @@ def download_overdrive_url(
     url: str = typer.Argument(..., help="URL to fetch"),
 ) -> None:
     """Output Overdrive feed data by URL (metadata, availability, etc)."""
-    results = asyncio.run(overdrive.fetch_url(client_key, client_secret, url))
+    try:
+        results = asyncio.run(overdrive.fetch_url(client_key, client_secret, url))
+    except overdrive.OverdriveError as e:
+        print(e)
+        raise typer.Exit(code=-1)
 
     print(json.dumps(results, indent=4))
 

@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import json
 import math
-import sys
 import time
 from collections import defaultdict, deque
 from collections.abc import AsyncGenerator
@@ -37,14 +36,46 @@ TOKEN_EXPIRY_MARGIN = 120.0
 TOKEN_RETRY_DELAY = 1.0
 
 
-def handle_error(resp: Response) -> None:
+class OverdriveError(Exception):
+    """A response we can't use, or a request we've given up on."""
+
+
+class HarvestAborted(OverdriveError):
+    """A harvest that ended early, carrying what it had already downloaded.
+
+    A full harvest runs for hours, so the products collected before something
+    went wrong are worth keeping even though the feed is incomplete. Every way
+    a harvest can end early arrives here, so a caller only has to handle this
+    one exception to save the partial feed.
+    """
+
+    def __init__(self, products: list[dict[str, Any]], cause: BaseException) -> None:
+        super().__init__(_abort_reason(cause))
+        self.products = products
+
+
+def _abort_reason(cause: BaseException) -> str:
+    if isinstance(cause, asyncio.CancelledError):
+        return "Harvest interrupted."
+    # The errors we raise ourselves explain themselves; anything else may not
+    # carry a message at all, so fall back to its repr.
+    detail = str(cause) if isinstance(cause, OverdriveError) else repr(cause)
+    return f"Harvest aborted: {detail}"
+
+
+def raise_for_error(resp: Response) -> None:
     if resp.status_code == 200:
         return
-    print(f"URL: {resp.url}")
-    print(f"Error: {resp.status_code}")
-    print(f"Headers: {json.dumps(dict(resp.headers), indent=4)}")
-    print(resp.text)
-    sys.exit(-1)
+    raise OverdriveError(
+        "\n".join(
+            [
+                f"URL: {resp.url}",
+                f"Error: {resp.status_code}",
+                f"Headers: {json.dumps(dict(resp.headers), indent=4)}",
+                resp.text,
+            ]
+        )
+    )
 
 
 class OverdriveAuth(httpx.Auth):
@@ -132,8 +163,8 @@ class OverdriveAuth(httpx.Auth):
                     if response.status_code < 500:
                         # A 200 gives us a token, anything else in this range
                         # (bad credentials, for example) won't be fixed by
-                        # retrying, so let handle_error report and exit.
-                        handle_error(response)
+                        # retrying, so let raise_for_error report it.
+                        raise_for_error(response)
                         return self._store_token(response.json())
                     detail = f"HTTP {response.status_code}"
 
@@ -144,9 +175,9 @@ class OverdriveAuth(httpx.Auth):
                 if attempt < MAX_ATTEMPTS:
                     await asyncio.sleep(TOKEN_RETRY_DELAY * attempt)
 
-        print(f"Giving up after {MAX_ATTEMPTS} attempts.")
-        print(f"URL: {TOKEN_ENDPOINT}")
-        sys.exit(-1)
+        raise OverdriveError(
+            f"Giving up after {MAX_ATTEMPTS} attempts.\nURL: {TOKEN_ENDPOINT}"
+        )
 
     def _store_token(self, data: dict[str, Any]) -> tuple[str, int]:
         expires_in = float(data.get("expires_in", DEFAULT_TOKEN_LIFETIME))
@@ -176,21 +207,20 @@ async def get_collection_token(
         if use_consortial_plus_advantage_feed:
             endpoint = ADVANTAGE_ACCOUNTS_ENDPOINT % variables
             resp = await http.get(endpoint)
-            handle_error(resp)
+            raise_for_error(resp)
             accounts = resp.json()["advantageAccounts"]
             for account in accounts:
                 if account["id"] == int(library_id):
                     return str(account["collectionToken"])
 
-            print(f"No Advantage account found for library {library_id}")
-            sys.exit(-1)
+            raise OverdriveError(f"No Advantage account found for library {library_id}")
         else:
             endpoint = ADVANTAGE_LIBRARY_ENDPOINT
     else:
         endpoint = LIBRARY_ENDPOINT
 
     resp = await http.get(endpoint % variables)
-    handle_error(resp)
+    raise_for_error(resp)
     return resp.json()["collectionToken"]  # type: ignore[no-any-return]
 
 
@@ -268,97 +298,125 @@ async def fetch(
     skip_not_found: bool,
     use_consortial_plus_advantage_feed: bool = False,
 ) -> list[dict[str, Any]]:
-    async with HTTPXAsyncClient(
-        auth=OverdriveAuth(client_key, client_secret),
-        base_url=URL(base_url),
-        timeout=Timeout(20.0, pool=None),
-        limits=Limits(
-            max_connections=connections,
-            max_keepalive_connections=connections,
-            keepalive_expiry=5,
-        ),
-    ) as client:
-        collection_token = await get_collection_token(
-            client, library_id, parent_library_id, use_consortial_plus_advantage_feed
-        )
+    """Harvest a collection's products, with their metadata and availability.
 
-        first_page = await client.get(event_url(collection_token))
-        handle_error(first_page)
-        first_page_data = first_page.json()
+    Raises ``HarvestAborted`` if the harvest ends early, carrying everything
+    that had been downloaded up to that point.
+    """
+    # Declared out here so that a harvest that ends early can still hand back
+    # what it downloaded, and so that its in-flight requests can be cancelled.
+    products: dict[str, Any] = {}
+    pending_requests: list[asyncio.Task[Response]] = []
 
-        items = first_page_data["totalItems"]
-        items_per_page = first_page_data["limit"]
-        pages = math.ceil(items / items_per_page)
+    try:
+        async with HTTPXAsyncClient(
+            auth=OverdriveAuth(client_key, client_secret),
+            base_url=URL(base_url),
+            timeout=Timeout(20.0, pool=None),
+            limits=Limits(
+                max_connections=connections,
+                max_keepalive_connections=connections,
+                keepalive_expiry=5,
+            ),
+        ) as client:
+            collection_token = await get_collection_token(
+                client,
+                library_id,
+                parent_library_id,
+                use_consortial_plus_advantage_feed,
+            )
 
-        fetches = (
-            pages
-            + (items if fetch_metadata else 0)
-            + (items * 2 if fetch_availability else 0)
-        )
-        with Progress(
-            SpinnerColumn(), *Progress.get_default_columns(), MofNCompleteColumn()
-        ) as progress:
-            download_task = progress.add_task(f"Downloading Feed", total=fetches)
-            urls: deque[str] = deque()
-            pending_requests: list[asyncio.Task[Response]] = []
-            products: dict[str, Any] = {}
-            retried_requests: defaultdict[str, int] = defaultdict(int)
+            first_page = await client.get(event_url(collection_token))
+            raise_for_error(first_page)
+            first_page_data = first_page.json()
 
-            for i in range(pages):
-                urls.append(event_url(collection_token, offset=i * items_per_page))
+            items = first_page_data["totalItems"]
+            items_per_page = first_page_data["limit"]
+            pages = math.ceil(items / items_per_page)
 
-            for i in range(min(connections * 2, len(urls))):
-                make_request(client, urls, pending_requests)
+            fetches = (
+                pages
+                + (items if fetch_metadata else 0)
+                + (items * 2 if fetch_availability else 0)
+            )
+            with Progress(
+                SpinnerColumn(), *Progress.get_default_columns(), MofNCompleteColumn()
+            ) as progress:
+                download_task = progress.add_task(f"Downloading Feed", total=fetches)
+                urls: deque[str] = deque()
+                retried_requests: defaultdict[str, int] = defaultdict(int)
 
-            while pending_requests:
-                done, pending = await asyncio.wait(
-                    pending_requests, return_when=asyncio.FIRST_COMPLETED
-                )
+                for i in range(pages):
+                    urls.append(event_url(collection_token, offset=i * items_per_page))
 
-                pending_requests = list(pending)
-                events_path = EVENTS_ENDPOINT % {"collection_token": collection_token}
+                for i in range(min(connections * 2, len(urls))):
+                    make_request(client, urls, pending_requests)
 
-                for req in done:
-                    response: Response | None = None
-                    try:
-                        response = await req
-                        process_request(
-                            response,
-                            fetch_metadata,
-                            fetch_availability,
-                            base_url,
-                            events_path,
-                            products,
-                            urls,
-                        )
-                        progress.update(download_task, advance=1)
-                    except (RequestError, HTTPStatusError, JSONDecodeError) as e:
-                        if isinstance(e, (RequestError, HTTPStatusError)):
-                            request_url = str(e.request.url)
-                        else:
-                            # JSONDecodeError: the await succeeded so response is set.
-                            assert response is not None
-                            request_url = str(response.url)
-                        retried_requests[request_url] += 1
-                        attempt = retried_requests[request_url]
-                        print(
-                            f"Request error ({attempt}/{MAX_ATTEMPTS}): {e} [{request_url}]"
-                        )
+                while pending_requests:
+                    done, pending = await asyncio.wait(
+                        pending_requests, return_when=asyncio.FIRST_COMPLETED
+                    )
 
-                        if attempt >= MAX_ATTEMPTS:
-                            print(f"Giving up after {MAX_ATTEMPTS} attempts.")
-                            sys.exit(-1)
+                    pending_requests = list(pending)
+                    events_path = EVENTS_ENDPOINT % {
+                        "collection_token": collection_token
+                    }
 
-                        if (
-                            skip_not_found
-                            and isinstance(e, HTTPStatusError)
-                            and e.response.status_code == 404
-                        ):
-                            print(f'url "{request_url}" NOT FOUND. Skipping...')
-                        else:
-                            urls.appendleft(request_url)
-                    if urls:
-                        make_request(client, urls, pending_requests)
+                    for req in done:
+                        response: Response | None = None
+                        try:
+                            response = await req
+                            process_request(
+                                response,
+                                fetch_metadata,
+                                fetch_availability,
+                                base_url,
+                                events_path,
+                                products,
+                                urls,
+                            )
+                            progress.update(download_task, advance=1)
+                        except (RequestError, HTTPStatusError, JSONDecodeError) as e:
+                            if isinstance(e, (RequestError, HTTPStatusError)):
+                                request_url = str(e.request.url)
+                            else:
+                                # JSONDecodeError: the await succeeded so response is set.
+                                assert response is not None
+                                request_url = str(response.url)
+                            retried_requests[request_url] += 1
+                            attempt = retried_requests[request_url]
+                            print(
+                                f"Request error ({attempt}/{MAX_ATTEMPTS}): {e} [{request_url}]"
+                            )
+
+                            if attempt >= MAX_ATTEMPTS:
+                                raise OverdriveError(
+                                    f"Giving up after {MAX_ATTEMPTS} attempts."
+                                    f"\nURL: {request_url}"
+                                ) from e
+
+                            if (
+                                skip_not_found
+                                and isinstance(e, HTTPStatusError)
+                                and e.response.status_code == 404
+                            ):
+                                print(f'url "{request_url}" NOT FOUND. Skipping...')
+                            else:
+                                urls.appendleft(request_url)
+                        if urls:
+                            make_request(client, urls, pending_requests)
+    except (Exception, asyncio.CancelledError) as e:
+        # Cancellation is turned into an abort rather than passed along,
+        # because Ctrl-C reaches a harvest as a cancellation and the hours of
+        # downloading it is interrupting are worth handing back. fetch() is
+        # only ever awaited as a whole operation, never as part of a task group
+        # or a timeout that would need the cancellation to propagate.
+        raise HarvestAborted(list(products.values()), e) from e
+    finally:
+        # Requests still in flight when a harvest ends have nothing left to
+        # deliver, and the client they were made with is already closed.
+        for pending_request in pending_requests:
+            pending_request.cancel()
 
     return list(products.values())
 
@@ -373,6 +431,6 @@ async def fetch_url(
         timeout=Timeout(20.0, pool=None),
     ) as client:
         response = await client.get(url)
-        handle_error(response)
+        raise_for_error(response)
 
     return response.json()
