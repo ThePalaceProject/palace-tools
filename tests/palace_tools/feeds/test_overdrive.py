@@ -125,6 +125,11 @@ class FakeFeed(FakeOverdrive):
             return httpx.Response(
                 200, json={"id": product_id, "title": f"Title {product_id}"}
             )
+        if path.endswith("/availability"):
+            product_id = path.split("/")[-2]
+            # The two availability endpoints name the product differently.
+            key = "reserveId" if path.startswith("/v2/") else "id"
+            return httpx.Response(200, json={key: product_id, "copiesOwned": 1})
         return httpx.Response(404, json={"error": "not found"})
 
     def _products_page(self, request: httpx.Request) -> httpx.Response:
@@ -181,6 +186,21 @@ async def auth_client(fake: FakeOverdrive) -> AsyncIterator[httpx.AsyncClient]:
 def no_retry_delay(monkeypatch: pytest.MonkeyPatch) -> None:
     """Token request retries shouldn't make the suite sleep."""
     monkeypatch.setattr(overdrive, "TOKEN_RETRY_DELAY", 0.0)
+
+
+@pytest.fixture
+def held_at_once(monkeypatch: pytest.MonkeyPatch) -> list[int]:
+    """Samples how many products a harvest is holding, every time it takes one."""
+    samples: list[int] = []
+
+    class Sampling(overdrive.PendingProducts):
+        def add(self, product: dict[str, Any]) -> bool:
+            added = super().add(product)
+            samples.append(len(self._products))
+            return added
+
+    monkeypatch.setattr(overdrive, "PendingProducts", Sampling)
+    return samples
 
 
 @pytest.fixture
@@ -444,24 +464,35 @@ class TestTokenRequestFailures:
                 client.get(API_URL)
 
 
-async def fetch_feed() -> list[dict[str, Any]]:
-    """Harvest whatever the router currently in force is serving."""
-    return await overdrive.fetch(
-        f"https://{API_HOST}",
-        "key",
-        "secret",
-        library_id="1234",
-        parent_library_id=None,
-        fetch_metadata=True,
-        fetch_availability=False,
-        connections=4,
-        skip_not_found=False,
-    )
+async def fetch_feed(
+    collected: list[dict[str, Any]] | None = None,
+    **overrides: Any,
+) -> list[dict[str, Any]]:
+    """Harvest whatever the router currently in force is serving.
+
+    ``fetch`` yields products as it completes them, so a harvest that aborts
+    has already handed some over. Pass ``collected`` to keep hold of those.
+    """
+    products = [] if collected is None else collected
+    kwargs: dict[str, Any] = {
+        "library_id": "1234",
+        "parent_library_id": None,
+        "fetch_metadata": True,
+        "fetch_availability": False,
+        "connections": 4,
+        "skip_not_found": False,
+        **overrides,
+    }
+    async for product in overdrive.fetch(
+        f"https://{API_HOST}", "key", "secret", **kwargs
+    ):
+        products.append(product)
+    return products
 
 
-async def harvest(fake: FakeFeed) -> list[dict[str, Any]]:
+async def harvest(fake: FakeFeed, **overrides: Any) -> list[dict[str, Any]]:
     async with overdrive_api(fake):
-        return await fetch_feed()
+        return await fetch_feed(**overrides)
 
 
 class TestFetch:
@@ -497,18 +528,46 @@ class TestFetch:
 class BrokenMetadataFeed(FakeFeed):
     """A feed with one product whose metadata request never succeeds."""
 
-    def __init__(self, item_count: int, page_size: int, broken_product: str) -> None:
+    def __init__(
+        self,
+        item_count: int,
+        page_size: int,
+        broken_product: str,
+        status: int = 500,
+    ) -> None:
         super().__init__(item_count, page_size)
         self.broken_product = broken_product
+        self.status = status
 
     def respond(self, request: httpx.Request) -> httpx.Response:
         if self._is_broken(request):
-            return httpx.Response(500, json={"error": "server error"})
+            return httpx.Response(self.status, json={"error": "no"})
         return super().respond(request)
 
     def _is_broken(self, request: httpx.Request) -> bool:
         path = request.url.path
         return path.endswith("/metadata") and path.split("/")[-2] == self.broken_product
+
+
+class RepeatingFeed(FakeFeed):
+    """A feed that lists one of its products on every page.
+
+    Paging a collection that is being edited underneath the harvest can do
+    this, and it used to be hidden by collecting the feed into one dict.
+    """
+
+    def __init__(self, item_count: int, page_size: int, repeated: str) -> None:
+        super().__init__(item_count, page_size)
+        self.repeated = repeated
+
+    def _products_page(self, request: httpx.Request) -> httpx.Response:
+        response = super()._products_page(request)
+        page = response.json()
+        listed = {product["id"] for product in page["products"]}
+        if page["products"] and self.repeated not in listed:
+            index = int(self.repeated.removeprefix("PID"))
+            page["products"].append(self._product(index))
+        return httpx.Response(200, json=page)
 
 
 class ConfusedFeed(FakeFeed):
@@ -525,28 +584,41 @@ class ConfusedFeed(FakeFeed):
 
 
 class TestPartialHarvest:
-    """A harvest that ends early hands back what it downloaded.
+    """A harvest that ends early keeps what it downloaded.
 
     A harvest runs for hours, so whatever it collected before it died is worth
-    keeping, even though the feed is incomplete.
+    keeping, even though the feed is incomplete. Products it finished have
+    already been handed over by then; ``HarvestAborted`` carries the ones that
+    were still waiting on a request.
     """
+
+    async def _abort(
+        self, fake: FakeFeed
+    ) -> tuple[list[dict[str, Any]], overdrive.HarvestAborted]:
+        """Harvest until it fails, returning what was yielded and what wasn't."""
+        yielded: list[dict[str, Any]] = []
+        async with overdrive_api(fake):
+            with pytest.raises(overdrive.HarvestAborted) as exc_info:
+                await fetch_feed(yielded)
+        return yielded, exc_info.value
 
     async def test_a_request_that_never_succeeds_keeps_the_rest(self) -> None:
         fake = BrokenMetadataFeed(item_count=10, page_size=5, broken_product="PID0003")
 
-        with pytest.raises(overdrive.HarvestAborted) as exc_info:
-            await harvest(fake)
+        yielded, aborted = await self._abort(fake)
 
-        aborted = exc_info.value
         assert f"Giving up after {MAX_ATTEMPTS} attempts." in str(aborted)
-        # Every product the feed listed is here, with the metadata of all but
-        # the one whose request kept failing.
-        assert sorted(product["id"] for product in aborted.products) == [
+        # Every product the feed listed is accounted for, with the metadata of
+        # all but the one whose request kept failing.
+        harvested = yielded + aborted.products
+        assert sorted(product["id"] for product in harvested) == [
             f"PID{index:04d}" for index in range(10)
         ]
-        assert sorted(
-            product["id"] for product in aborted.products if "metadata" in product
-        ) == [f"PID{index:04d}" for index in range(10) if index != 3]
+        assert sorted(product["id"] for product in yielded) == [
+            f"PID{index:04d}" for index in range(10) if index != 3
+        ]
+        # The one still waiting on its metadata is the one that never arrived.
+        assert [product["id"] for product in aborted.products] == ["PID0003"]
 
     async def test_a_token_that_cannot_be_refreshed_keeps_the_rest(self) -> None:
         """The failure this is really for: a token expires hours into a
@@ -561,12 +633,13 @@ class TestPartialHarvest:
                 return httpx.Response(503)
             return fake.issue_token(request)
 
+        yielded: list[dict[str, Any]] = []
         async with respx.mock(assert_all_called=False) as router:
             router.post(overdrive.TOKEN_ENDPOINT).mock(side_effect=issue_one_token)
             router.get(host=API_HOST).mock(side_effect=fake.respond)
 
             with pytest.raises(overdrive.HarvestAborted) as exc_info:
-                await fetch_feed()
+                await fetch_feed(yielded)
 
         aborted = exc_info.value
         assert f"Giving up after {MAX_ATTEMPTS} attempts." in str(aborted)
@@ -574,17 +647,15 @@ class TestPartialHarvest:
         assert fake.unauthorized > 0
         assert issued > 1
         # The products listed by the pages fetched before the token expired.
-        assert aborted.products
+        assert len(yielded) + len(aborted.products) == 10
 
     async def test_an_unforeseen_error_keeps_the_rest(self) -> None:
         fake = ConfusedFeed(item_count=10, page_size=5)
 
-        with pytest.raises(overdrive.HarvestAborted) as exc_info:
-            await harvest(fake)
+        yielded, aborted = await self._abort(fake)
 
-        aborted = exc_info.value
         assert "KeyError" in str(aborted)
-        assert len(aborted.products) == 10
+        assert len(yielded) + len(aborted.products) == 10
 
     async def test_an_interrupted_harvest_keeps_what_it_had(self) -> None:
         """Ctrl-C hours into a harvest shouldn't throw the hours away.
@@ -593,21 +664,22 @@ class TestPartialHarvest:
         is running, which is what this does to it by hand.
         """
         fake = FakeFeed(item_count=10, page_size=5)
-        pages_served = asyncio.Event()
+        metadata_served = asyncio.Event()
 
-        def note_page(request: httpx.Request) -> httpx.Response:
+        def note_metadata(request: httpx.Request) -> httpx.Response:
             response = fake.respond(request)
             if request.url.path.endswith("/metadata"):
-                pages_served.set()
+                metadata_served.set()
             return response
 
+        yielded: list[dict[str, Any]] = []
         async with respx.mock(assert_all_called=False) as router:
             router.post(overdrive.TOKEN_ENDPOINT).mock(side_effect=fake.issue_token)
-            router.get(host=API_HOST).mock(side_effect=note_page)
+            router.get(host=API_HOST).mock(side_effect=note_metadata)
 
-            harvesting = asyncio.create_task(fetch_feed())
+            harvesting = asyncio.create_task(fetch_feed(yielded))
             # Interrupt once the pages are in and metadata is being fetched.
-            await pages_served.wait()
+            await metadata_served.wait()
             harvesting.cancel()
 
             with pytest.raises(overdrive.HarvestAborted) as exc_info:
@@ -615,11 +687,183 @@ class TestPartialHarvest:
 
         aborted = exc_info.value
         assert str(aborted) == "Harvest interrupted."
-        # Every product the pages listed, most of them without metadata yet.
-        assert len(aborted.products) == 10
+        # Every product the pages listed, most still waiting on metadata.
+        assert len(yielded) + len(aborted.products) == 10
+        assert aborted.products
 
     async def test_a_harvest_that_finishes_does_not_raise(self) -> None:
         """The abort handling shouldn't fire on the way out of a good harvest."""
         products = await harvest(FakeFeed(item_count=10, page_size=5))
 
         assert len(products) == 10
+
+
+class TestStreaming:
+    """Products are handed over as they complete, not accumulated.
+
+    A large collection's feed is far too big to hold in memory, so the harvest
+    keeps only the products with a request still in flight.
+    """
+
+    async def test_holds_on_to_no_more_than_the_requests_in_flight(
+        self, held_at_once: list[int]
+    ) -> None:
+        """The point of the whole thing: memory tracks concurrency, not size.
+
+        Doubling the size of the collection must not change how much of it is
+        held in memory at once.
+        """
+        small = await harvest(FakeFeed(item_count=100, page_size=10), connections=2)
+        small_peak = max(held_at_once)
+        held_at_once.clear()
+
+        large = await harvest(FakeFeed(item_count=400, page_size=10), connections=2)
+        large_peak = max(held_at_once)
+
+        assert len(small) == 100
+        assert len(large) == 400
+        assert large_peak == small_peak
+        # Bounded by the pages in flight, not by the 400 products harvested.
+        assert large_peak < 100
+
+    async def test_a_product_is_yielded_only_once_it_is_complete(self) -> None:
+        fake = FakeFeed(item_count=10, page_size=5)
+
+        products = await harvest(fake, fetch_availability=True)
+
+        assert len(products) == 10
+        for product in products:
+            assert "metadata" in product
+            assert "availability" in product
+            assert "availabilityV2" in product
+
+    async def test_a_product_with_nothing_to_fetch_is_yielded_straight_away(
+        self,
+    ) -> None:
+        fake = FakeFeed(item_count=10, page_size=5)
+
+        products = await harvest(fake, fetch_metadata=False)
+
+        assert len(products) == 10
+        assert not any("metadata" in product for product in products)
+
+    async def test_a_title_on_two_pages_is_harvested_once(self) -> None:
+        """Paging a collection that is being edited can list a title twice.
+
+        Collecting the feed into one dict keyed by id used to hide that.
+        """
+        fake = RepeatingFeed(item_count=10, page_size=5, repeated="PID0000")
+
+        products = await harvest(fake)
+
+        assert sorted(product["id"] for product in products) == [
+            f"PID{index:04d}" for index in range(10)
+        ]
+
+    async def test_a_skipped_request_does_not_strand_its_product(self) -> None:
+        """A product whose metadata 404s is never getting it, so it shouldn't
+        be held in memory waiting for it."""
+        fake = BrokenMetadataFeed(
+            item_count=10, page_size=5, broken_product="PID0003", status=404
+        )
+
+        products = await harvest(fake, skip_not_found=True)
+
+        assert sorted(product["id"] for product in products) == [
+            f"PID{index:04d}" for index in range(10)
+        ]
+        assert [product["id"] for product in products if "metadata" not in product] == [
+            "PID0003"
+        ]
+
+
+class TestPendingProducts:
+    def test_releases_a_product_once_its_last_request_lands(self) -> None:
+        pending = overdrive.PendingProducts(2)
+        assert pending.add({"id": "PID0000"}) is True
+
+        pending.attach("pid0000", "availability", {"copies": 1})
+        assert pending.take_finished() == []
+
+        pending.attach("pid0000", "availabilityV2", {"copies": 2})
+        assert pending.take_finished() == [
+            {
+                "id": "PID0000",
+                "availability": {"copies": 1},
+                "availabilityV2": {"copies": 2},
+            }
+        ]
+        # Released means released: it isn't still being held.
+        assert pending.take_remaining() == []
+
+    def test_releases_a_product_with_nothing_to_wait_for(self) -> None:
+        pending = overdrive.PendingProducts(0)
+
+        assert pending.add({"id": "PID0000"}) is True
+
+        assert pending.take_finished() == [{"id": "PID0000"}]
+
+    def test_refuses_a_product_it_has_already_seen(self) -> None:
+        pending = overdrive.PendingProducts(1)
+        pending.add({"id": "PID0000"})
+        pending.attach("pid0000", "metadata", {})
+        pending.take_finished()
+
+        # Already harvested and let go of, so it isn't taken up again.
+        assert pending.add({"id": "PID0000"}) is False
+        assert pending.take_finished() == []
+
+    def test_giving_up_releases_a_product_that_is_only_waiting_on_that(self) -> None:
+        pending = overdrive.PendingProducts(1)
+        pending.add({"id": "PID0000"})
+
+        pending.give_up_on("pid0000")
+
+        assert pending.take_finished() == [{"id": "PID0000"}]
+
+    def test_giving_up_on_a_product_it_does_not_hold_is_harmless(self) -> None:
+        pending = overdrive.PendingProducts(1)
+
+        pending.give_up_on("pid9999")
+
+        assert pending.take_finished() == []
+
+    def test_take_remaining_includes_products_not_yet_taken(self) -> None:
+        pending = overdrive.PendingProducts(1)
+        pending.add({"id": "PID0000"})
+        pending.attach("pid0000", "metadata", {})
+        pending.add({"id": "PID0001"})
+
+        # The finished product and the one still waiting, both handed back.
+        assert sorted(product["id"] for product in pending.take_remaining()) == [
+            "PID0000",
+            "PID0001",
+        ]
+        assert pending.take_remaining() == []
+
+
+class TestAttachedProductId:
+    @pytest.mark.parametrize(
+        "url, expected",
+        [
+            (
+                f"https://{API_HOST}/v1/collections/C/products/PID0001/metadata",
+                "pid0001",
+            ),
+            (
+                f"https://{API_HOST}/v1/collections/C/products/PID0001/availability",
+                "pid0001",
+            ),
+            (
+                f"https://{API_HOST}/v2/collections/C/products/PID0001/availability",
+                "pid0001",
+            ),
+            # A page of the feed belongs to no single product.
+            (f"https://{API_HOST}/v1/collections/C/products?offset=200", None),
+            (f"https://{API_HOST}/v1/libraries/1234", None),
+        ],
+    )
+    def test_reads_the_product_out_of_a_url(
+        self, url: str, expected: str | None
+    ) -> None:
+        assert overdrive.attached_product_id(url) == expected

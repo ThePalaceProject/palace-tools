@@ -5,7 +5,7 @@ import json
 import math
 import time
 from collections import defaultdict, deque
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, AsyncIterator
 from json import JSONDecodeError
 from typing import Any
 
@@ -252,13 +252,88 @@ def make_request(
     pending_requests.append(task)
 
 
+class PendingProducts:
+    """Products that are still waiting on requests, and the ones that aren't.
+
+    A page of the feed gives a product, and each of the metadata and
+    availability requests that follow fills in a bit more of it. A large
+    collection's worth of those is far too much to hold in memory at once, so
+    a product is released the moment nothing more is coming for it and then
+    dropped. What's left in here at any moment is only what's in flight.
+    """
+
+    def __init__(self, attachments_per_product: int) -> None:
+        self._attachments = attachments_per_product
+        self._products: dict[str, dict[str, Any]] = {}
+        self._outstanding: dict[str, int] = {}
+        self._finished: list[dict[str, Any]] = []
+        # Ids are kept for the whole harvest, unlike the products themselves.
+        # A title listed on two pages would otherwise be fetched and written
+        # out twice, where collecting the feed in one dict deduplicated it.
+        self._seen: set[str] = set()
+
+    def add(self, product: dict[str, Any]) -> bool:
+        """Start tracking a product listed by a feed page.
+
+        Returns False for a product already listed by an earlier page, whose
+        requests have been made already.
+        """
+        product_id = product["id"].lower()
+        if product_id in self._seen:
+            return False
+
+        self._seen.add(product_id)
+        if not self._attachments:
+            self._finished.append(product)
+        else:
+            self._products[product_id] = product
+            self._outstanding[product_id] = self._attachments
+        return True
+
+    def attach(self, product_id: str, key: str, data: Any) -> None:
+        """Add a metadata or availability document to the product it belongs to."""
+        self._products[product_id][key] = data
+        self._settle(product_id)
+
+    def give_up_on(self, product_id: str) -> None:
+        """Stop waiting for a request that is never going to arrive."""
+        if product_id in self._outstanding:
+            self._settle(product_id)
+
+    def _settle(self, product_id: str) -> None:
+        self._outstanding[product_id] -= 1
+        if self._outstanding[product_id] == 0:
+            del self._outstanding[product_id]
+            self._finished.append(self._products.pop(product_id))
+
+    def take_finished(self) -> list[dict[str, Any]]:
+        """The products nothing more is coming for, which we can now let go of."""
+        finished, self._finished = self._finished, []
+        return finished
+
+    def take_remaining(self) -> list[dict[str, Any]]:
+        """Everything still in hand, for a harvest that isn't going to finish."""
+        remaining = self.take_finished() + list(self._products.values())
+        self._products.clear()
+        self._outstanding.clear()
+        return remaining
+
+
+def attached_product_id(url: str) -> str | None:
+    """The product a metadata or availability URL belongs to, if it is one."""
+    product_path, _, kind = URL(url).path.rpartition("/")
+    if kind not in ("metadata", "availability"):
+        return None
+    return product_path.rpartition("/")[2].lower()
+
+
 def process_request(
     response: Response,
     request_metadata: bool,
     request_availability: bool,
     base_url: str,
     events_path: str,
-    products: dict[str, Any],
+    pending: PendingProducts,
     urls: deque[str],
 ) -> None:
     data = response.raise_for_status().json()
@@ -266,6 +341,8 @@ def process_request(
     if path == events_path:
         response_products = data["products"]
         for product in response_products:
+            if not pending.add(product):
+                continue
             if request_metadata:
                 urls.append(product["links"]["metadata"]["href"].removeprefix(base_url))
             if request_availability:
@@ -275,13 +352,12 @@ def process_request(
                 urls.append(
                     product["links"]["availabilityV2"]["href"].removeprefix(base_url)
                 )
-            products[product["id"].lower()] = product
     elif path.endswith("availability") and path.startswith("/v1/"):
-        products[data["id"].lower()]["availability"] = data
+        pending.attach(data["id"].lower(), "availability", data)
     elif path.endswith("availability") and path.startswith("/v2/"):
-        products[data["reserveId"].lower()]["availabilityV2"] = data
+        pending.attach(data["reserveId"].lower(), "availabilityV2", data)
     elif path.endswith("metadata") and path.startswith("/v1/"):
-        products[data["id"].lower()]["metadata"] = data
+        pending.attach(data["id"].lower(), "metadata", data)
     else:
         raise RuntimeError(f"Unknown URL: {response.url}")
 
@@ -297,15 +373,20 @@ async def fetch(
     connections: int,
     skip_not_found: bool,
     use_consortial_plus_advantage_feed: bool = False,
-) -> list[dict[str, Any]]:
-    """Harvest a collection's products, with their metadata and availability.
+) -> AsyncIterator[dict[str, Any]]:
+    """Harvest a collection, yielding each product once it is complete.
 
-    Raises ``HarvestAborted`` if the harvest ends early, carrying everything
-    that had been downloaded up to that point.
+    A product is handed over as soon as the last of its requests comes back,
+    so that a caller can write it out and let it go. Only the products with a
+    request still in flight are held onto, which is a few thousand at most,
+    rather than the whole collection.
+
+    Raises ``HarvestAborted`` if the harvest ends early, carrying the products
+    that were still waiting on a request and so were never yielded.
     """
-    # Declared out here so that a harvest that ends early can still hand back
-    # what it downloaded, and so that its in-flight requests can be cancelled.
-    products: dict[str, Any] = {}
+    pending = PendingProducts(
+        (1 if fetch_metadata else 0) + (2 if fetch_availability else 0)
+    )
     pending_requests: list[asyncio.Task[Response]] = []
 
     try:
@@ -353,11 +434,11 @@ async def fetch(
                     make_request(client, urls, pending_requests)
 
                 while pending_requests:
-                    done, pending = await asyncio.wait(
+                    done, pending_tasks = await asyncio.wait(
                         pending_requests, return_when=asyncio.FIRST_COMPLETED
                     )
 
-                    pending_requests = list(pending)
+                    pending_requests = list(pending_tasks)
                     events_path = EVENTS_ENDPOINT % {
                         "collection_token": collection_token
                     }
@@ -372,7 +453,7 @@ async def fetch(
                                 fetch_availability,
                                 base_url,
                                 events_path,
-                                products,
+                                pending,
                                 urls,
                             )
                             progress.update(download_task, advance=1)
@@ -401,24 +482,36 @@ async def fetch(
                                 and e.response.status_code == 404
                             ):
                                 print(f'url "{request_url}" NOT FOUND. Skipping...')
+                                # Nothing more is coming for this product, so
+                                # don't leave it waiting for a 404 forever.
+                                skipped = attached_product_id(request_url)
+                                if skipped is not None:
+                                    pending.give_up_on(skipped)
                             else:
                                 urls.appendleft(request_url)
+
+                        for product in pending.take_finished():
+                            yield product
+
                         if urls:
                             make_request(client, urls, pending_requests)
+
+                # Nothing is in flight any more, so anything still waiting is
+                # as complete as it is ever going to get.
+                for product in pending.take_remaining():
+                    yield product
     except (Exception, asyncio.CancelledError) as e:
         # Cancellation is turned into an abort rather than passed along,
         # because Ctrl-C reaches a harvest as a cancellation and the hours of
         # downloading it is interrupting are worth handing back. fetch() is
-        # only ever awaited as a whole operation, never as part of a task group
-        # or a timeout that would need the cancellation to propagate.
-        raise HarvestAborted(list(products.values()), e) from e
+        # only ever consumed as a whole operation, never as part of a task
+        # group or a timeout that would need the cancellation to propagate.
+        raise HarvestAborted(pending.take_remaining(), e) from e
     finally:
         # Requests still in flight when a harvest ends have nothing left to
         # deliver, and the client they were made with is already closed.
         for pending_request in pending_requests:
             pending_request.cancel()
-
-    return list(products.values())
 
 
 async def fetch_url(
