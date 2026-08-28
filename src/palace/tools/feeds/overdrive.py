@@ -4,7 +4,9 @@ import asyncio
 import json
 import math
 import sys
+import time
 from collections import defaultdict, deque
+from collections.abc import AsyncGenerator
 from json import JSONDecodeError
 from typing import Any
 
@@ -25,6 +27,16 @@ ADVANTAGE_LIBRARY_ENDPOINT = (
 )
 ADVANTAGE_ACCOUNTS_ENDPOINT = "/v1/libraries/%(parent_library_id)s/advantageAccounts"
 
+USER_AGENT = "Palace"
+
+# Assumed token lifetime, in seconds, if the token response omits "expires_in".
+DEFAULT_TOKEN_LIFETIME = 3600.0
+# How long before a token actually expires we consider it expired, so that
+# in-flight requests aren't sent with a token that expires mid-flight.
+TOKEN_EXPIRY_MARGIN = 120.0
+# Base delay, in seconds, between retries of a failed token request.
+TOKEN_RETRY_DELAY = 1.0
+
 
 def handle_error(resp: Response) -> None:
     if resp.status_code == 200:
@@ -36,19 +48,118 @@ def handle_error(resp: Response) -> None:
     sys.exit(-1)
 
 
-async def get_auth_token(
-    http: httpx.AsyncClient, client_key: str, client_secret: str
-) -> str:
-    auth = (client_key, client_secret)
-    resp = await http.post(
-        TOKEN_ENDPOINT, auth=auth, data=dict(grant_type="client_credentials")
-    )
-    handle_error(resp)
-    return resp.json()["access_token"]  # type: ignore[no-any-return]
+class OverdriveAuth(httpx.Auth):
+    """Bearer token authentication that transparently refreshes the token.
 
+    Overdrive access tokens are short lived (an hour, typically), which is much
+    shorter than a full feed harvest takes. Without refreshing, every request
+    made after the token expires fails with a 401.
 
-def get_headers(auth_token: str) -> dict[str, str]:
-    return {"Authorization": "Bearer " + auth_token, "User-Agent": "Palace"}
+    The token is refreshed proactively once it is close to expiring, and
+    reactively if the API rejects it with a 401 anyway. Refreshes are
+    serialized, so a wave of concurrent 401s only triggers a single token
+    request; requests that were using the token that has already been replaced
+    just pick up the new one.
+    """
+
+    def __init__(
+        self,
+        client_key: str,
+        client_secret: str,
+        expiry_margin: float = TOKEN_EXPIRY_MARGIN,
+    ) -> None:
+        self._client_key = client_key
+        self._client_secret = client_secret
+        self._expiry_margin = expiry_margin
+        self._token: str | None = None
+        self._expires_at = 0.0
+        # Incremented on every successful token fetch. Requests record the
+        # generation of the token they used, so that when they get a 401 we can
+        # tell whether the token has already been refreshed by someone else.
+        self._generation = 0
+        self._lock = asyncio.Lock()
+
+    def sync_auth_flow(
+        self, request: httpx.Request
+    ) -> Any:  # pragma: no cover - async only
+        raise RuntimeError("OverdriveAuth can only be used with an AsyncClient.")
+
+    async def async_auth_flow(
+        self, request: httpx.Request
+    ) -> AsyncGenerator[httpx.Request, Response]:
+        token, generation = await self._current_token()
+        request.headers["Authorization"] = f"Bearer {token}"
+        response = yield request
+
+        if response.status_code != 401:
+            return
+
+        # The token was rejected, most likely because it expired. Refresh it
+        # and give the request one more try with the new token.
+        token, _ = await self._refresh_token(generation)
+        request.headers["Authorization"] = f"Bearer {token}"
+        yield request
+
+    async def _current_token(self) -> tuple[str, int]:
+        # These reads happen without awaiting, so they see a consistent token,
+        # expiry and generation.
+        token = self._token
+        generation = self._generation
+        if token is not None and time.monotonic() < self._expires_at:
+            return token, generation
+        return await self._refresh_token(generation)
+
+    async def _refresh_token(self, seen_generation: int) -> tuple[str, int]:
+        async with self._lock:
+            if self._token is not None and self._generation != seen_generation:
+                # Someone else already replaced the token we were using.
+                return self._token, self._generation
+            return await self._fetch_token()
+
+    async def _fetch_token(self) -> tuple[str, int]:
+        """Request a new access token. Called with ``self._lock`` held."""
+        async with httpx.AsyncClient(timeout=Timeout(20.0)) as token_client:
+            for attempt in range(1, MAX_ATTEMPTS + 1):
+                detail: str
+                try:
+                    response = await token_client.post(
+                        TOKEN_ENDPOINT,
+                        auth=(self._client_key, self._client_secret),
+                        data=dict(grant_type="client_credentials"),
+                    )
+                except RequestError as e:
+                    detail = str(e)
+                else:
+                    if response.status_code < 500:
+                        # A 200 gives us a token, anything else in this range
+                        # (bad credentials, for example) won't be fixed by
+                        # retrying, so let handle_error report and exit.
+                        handle_error(response)
+                        return self._store_token(response.json())
+                    detail = f"HTTP {response.status_code}"
+
+                print(
+                    f"Token request error ({attempt}/{MAX_ATTEMPTS}): "
+                    f"{detail} [{TOKEN_ENDPOINT}]"
+                )
+                if attempt < MAX_ATTEMPTS:
+                    await asyncio.sleep(TOKEN_RETRY_DELAY * attempt)
+
+        print(f"Giving up after {MAX_ATTEMPTS} attempts.")
+        print(f"URL: {TOKEN_ENDPOINT}")
+        sys.exit(-1)
+
+    def _store_token(self, data: dict[str, Any]) -> tuple[str, int]:
+        expires_in = float(data.get("expires_in", DEFAULT_TOKEN_LIFETIME))
+        # Retire the token early, so it doesn't expire on an in-flight request.
+        # Never treat it as valid for less than half its lifetime though, or a
+        # surprisingly short-lived token would have us fetching a new one for
+        # every single request.
+        lifetime = max(expires_in - self._expiry_margin, expires_in / 2)
+        self._token = str(data["access_token"])
+        self._expires_at = time.monotonic() + lifetime
+        self._generation += 1
+        return self._token, self._generation
 
 
 async def get_collection_token(
@@ -159,6 +270,9 @@ async def fetch(
     use_consortial_plus_advantage_feed: bool = False,
 ) -> list[dict[str, Any]]:
     async with httpx.AsyncClient(
+        auth=OverdriveAuth(client_key, client_secret),
+        base_url=URL(base_url),
+        headers={"User-Agent": USER_AGENT},
         timeout=Timeout(20.0, pool=None),
         limits=Limits(
             max_connections=connections,
@@ -166,11 +280,6 @@ async def fetch(
             keepalive_expiry=5,
         ),
     ) as client:
-        auth_token = await get_auth_token(client, client_key, client_secret)
-
-        client.headers.update(get_headers(auth_token))
-        client.base_url = URL(base_url)
-
         collection_token = await get_collection_token(
             client, library_id, parent_library_id, use_consortial_plus_advantage_feed
         )
@@ -262,11 +371,10 @@ async def fetch_url(
     url: str,
 ) -> Any:
     async with httpx.AsyncClient(
+        auth=OverdriveAuth(client_key, client_secret),
+        headers={"User-Agent": USER_AGENT},
         timeout=Timeout(20.0, pool=None),
     ) as client:
-        auth_token = await get_auth_token(client, client_key, client_secret)
-
-        client.headers.update(get_headers(auth_token))
         response = await client.get(url)
         handle_error(response)
 
