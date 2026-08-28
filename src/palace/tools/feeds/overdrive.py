@@ -15,6 +15,7 @@ from httpx import URL, HTTPStatusError, Limits, RequestError, Response, Timeout
 from rich.progress import MofNCompleteColumn, Progress, SpinnerColumn
 
 from palace.tools.feeds.retry import MAX_ATTEMPTS
+from palace.tools.utils.http.async_client import HTTPXAsyncClient
 
 QA_BASE_URL = "https://integration.api.overdrive.com"
 PROD_BASE_URL = "https://api.overdrive.com"
@@ -26,8 +27,6 @@ ADVANTAGE_LIBRARY_ENDPOINT = (
     "/v1/libraries/%(parent_library_id)s/advantageAccounts/%(library_id)s"
 )
 ADVANTAGE_ACCOUNTS_ENDPOINT = "/v1/libraries/%(parent_library_id)s/advantageAccounts"
-
-USER_AGENT = "Palace"
 
 # Assumed token lifetime, in seconds, if the token response omits "expires_in".
 DEFAULT_TOKEN_LIFETIME = 3600.0
@@ -118,7 +117,7 @@ class OverdriveAuth(httpx.Auth):
 
     async def _fetch_token(self) -> tuple[str, int]:
         """Request a new access token. Called with ``self._lock`` held."""
-        async with httpx.AsyncClient(timeout=Timeout(20.0)) as token_client:
+        async with HTTPXAsyncClient(timeout=Timeout(20.0)) as token_client:
             for attempt in range(1, MAX_ATTEMPTS + 1):
                 detail: str
                 try:
@@ -269,10 +268,9 @@ async def fetch(
     skip_not_found: bool,
     use_consortial_plus_advantage_feed: bool = False,
 ) -> list[dict[str, Any]]:
-    async with httpx.AsyncClient(
+    async with HTTPXAsyncClient(
         auth=OverdriveAuth(client_key, client_secret),
         base_url=URL(base_url),
-        headers={"User-Agent": USER_AGENT},
         timeout=Timeout(20.0, pool=None),
         limits=Limits(
             max_connections=connections,
@@ -370,9 +368,8 @@ async def fetch_url(
     client_secret: str,
     url: str,
 ) -> Any:
-    async with httpx.AsyncClient(
+    async with HTTPXAsyncClient(
         auth=OverdriveAuth(client_key, client_secret),
-        headers={"User-Agent": USER_AGENT},
         timeout=Timeout(20.0, pool=None),
     ) as client:
         response = await client.get(url)

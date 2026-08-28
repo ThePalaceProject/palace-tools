@@ -16,6 +16,7 @@ import httpx
 import pytest
 import respx
 
+from palace.tools.constants import DEFAULT_USER_AGENT
 from palace.tools.feeds import overdrive
 from palace.tools.feeds.retry import MAX_ATTEMPTS
 
@@ -46,6 +47,10 @@ class FakeOverdrive:
         self.unauthorized = 0
         # The bearer token presented on each API request, in order.
         self.presented: list[str] = []
+        # The User-Agent seen on each kind of request. The token endpoint is
+        # reached with a client of its own, so it's tracked separately.
+        self.token_user_agents: set[str] = set()
+        self.api_user_agents: set[str] = set()
         self._valid: set[str] = set()
         self._issued = 0
 
@@ -58,6 +63,7 @@ class FakeOverdrive:
         self._valid.clear()
 
     def issue_token(self, request: httpx.Request) -> httpx.Response:
+        self.token_user_agents.add(request.headers.get("User-Agent", ""))
         self.token_requests += 1
         self._issued += 1
         token = self.current_token
@@ -69,6 +75,7 @@ class FakeOverdrive:
 
     def check_auth(self, request: httpx.Request) -> httpx.Response | None:
         """Record the token presented, returning a 401 if it isn't valid."""
+        self.api_user_agents.add(request.headers.get("User-Agent", ""))
         token = request.headers.get("Authorization", "").removeprefix("Bearer ")
         self.presented.append(token)
         if token not in self._valid:
@@ -192,6 +199,16 @@ class TestOverdriveAuth:
         assert response.status_code == 200
         assert fake.token_requests == 1
         assert fake.presented == ["token-1"]
+
+    async def test_token_request_identifies_itself(self) -> None:
+        """The token endpoint is reached with a client of its own, which used
+        to go out with httpx's default User-Agent instead of ours."""
+        fake = FakeOverdrive()
+        async with auth_client(fake) as client:
+            await client.get(API_URL)
+
+        assert fake.token_requests == 1
+        assert fake.token_user_agents == {DEFAULT_USER_AGENT}
 
     async def test_reuses_a_valid_token(self) -> None:
         fake = FakeOverdrive()
@@ -453,6 +470,9 @@ class TestFetch:
         assert all("metadata" in product for product in products)
         assert fake.token_requests == 1
         assert fake.unauthorized == 0
+        # Every request a harvest makes identifies itself, feed and token alike.
+        assert fake.api_user_agents == {DEFAULT_USER_AGENT}
+        assert fake.token_user_agents == {DEFAULT_USER_AGENT}
 
     async def test_harvest_survives_a_token_expiring_partway_through(self) -> None:
         # Before token refresh, the harvest died here: every request from the

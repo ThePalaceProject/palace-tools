@@ -21,6 +21,7 @@ from rich.progress import (
 )
 from rich.text import Text
 
+from palace.tools.constants import DEFAULT_USER_AGENT
 from palace.tools.utils.typer import run_typer_app_as_main
 
 console = Console()
@@ -421,7 +422,7 @@ async def run_stress_test(
             max_connections=concurrency * 2,
         ),
         headers={
-            "User-Agent": "Palace",
+            "User-Agent": DEFAULT_USER_AGENT,
             "Accept": "application/opds+json, application/json;q=0.9, */*;q=0.1",
         },
     ) as client:

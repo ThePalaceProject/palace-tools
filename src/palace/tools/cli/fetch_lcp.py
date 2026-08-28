@@ -133,12 +133,11 @@ async def process_command(
     username: str,
     password: str | None,
 ) -> None:
-    client_headers = {"User-Agent": "Palace"}
     token: BaseAuthorizationToken = BasicAuthToken.from_username_and_password(
         username, password
     )
 
-    async with HTTPXAsyncClient(headers=client_headers) as client:
+    async with HTTPXAsyncClient() as client:
         response = await client.get(fulfillment_url, headers=token.as_http_headers)
         response.raise_for_status()
 

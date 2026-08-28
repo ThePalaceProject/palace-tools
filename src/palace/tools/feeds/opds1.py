@@ -5,6 +5,7 @@ from xml.etree import ElementTree
 import httpx
 from rich.progress import MofNCompleteColumn, Progress, SpinnerColumn
 
+from palace.tools.constants import DEFAULT_USER_AGENT
 from palace.tools.feeds.opds import AuthType, OAuthAuth, OpdsLinkTuple, error_and_exit
 
 
@@ -39,7 +40,7 @@ def fetch(
     client.headers.update(
         {
             "Accept": "application/atom+xml;profile=opds-catalog;kind=acquisition,application/atom+xml;q=0.9,application/xml;q=0.8,*/*;q=0.1",
-            "User-Agent": "Palace",
+            "User-Agent": DEFAULT_USER_AGENT,
         }
     )
     client.timeout = httpx.Timeout(30.0)

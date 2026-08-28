@@ -11,6 +11,7 @@ from rich.progress import MofNCompleteColumn, Progress, SpinnerColumn
 
 from palace.opds.odl.info import LicenseInfo
 
+from palace.tools.constants import DEFAULT_USER_AGENT
 from palace.tools.feeds import opds
 from palace.tools.feeds.retry import request_with_retry_async
 
@@ -61,7 +62,7 @@ async def fetch_license_documents(
 
     headers = {
         "Accept": f"{LicenseInfo.content_type()}, application/json;q=0.9, */*;q=0.1",
-        "User-Agent": "Palace",
+        "User-Agent": DEFAULT_USER_AGENT,
     }
 
     async with httpx.AsyncClient(
