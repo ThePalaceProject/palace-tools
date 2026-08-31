@@ -41,22 +41,20 @@ class OverdriveError(Exception):
 
 
 class HarvestAborted(OverdriveError):
-    """A harvest that ended early, carrying what it had already downloaded.
+    """A harvest that failed part way through, carrying what it still held.
 
-    A full harvest runs for hours, so the products collected before something
-    went wrong are worth keeping even though the feed is incomplete. Every way
-    a harvest can end early arrives here, so a caller only has to handle this
-    one exception to save the partial feed.
+    A full harvest runs for hours, so the products it was still waiting on
+    when something went wrong are worth handing back even though the feed is
+    incomplete -- everything already finished has been yielded by then. This
+    is for failures only; a Ctrl-C is an ordinary cancellation and propagates.
     """
 
-    def __init__(self, products: list[dict[str, Any]], cause: BaseException) -> None:
+    def __init__(self, products: list[dict[str, Any]], cause: Exception) -> None:
         super().__init__(_abort_reason(cause))
         self.products = products
 
 
-def _abort_reason(cause: BaseException) -> str:
-    if isinstance(cause, asyncio.CancelledError):
-        return "Harvest interrupted."
+def _abort_reason(cause: Exception) -> str:
     # The errors we raise ourselves explain themselves; anything else may not
     # carry a message at all, so fall back to its repr.
     detail = str(cause) if isinstance(cause, OverdriveError) else repr(cause)
@@ -392,8 +390,11 @@ async def fetch(
     request still in flight are held onto, which is a few thousand at most,
     rather than the whole collection.
 
-    Raises ``HarvestAborted`` if the harvest ends early, carrying the products
-    that were still waiting on a request and so were never yielded.
+    Raises ``HarvestAborted`` if the harvest fails, carrying the products that
+    were still waiting on a request and so were never yielded. A cancellation
+    is passed along untouched, so a Ctrl-C behaves like a Ctrl-C; what it
+    costs is the products still in flight, everything before them having
+    already been yielded.
     """
     per_product = requests_per_product(fetch_metadata, fetch_availability)
     pending = PendingProducts(per_product)
@@ -506,12 +507,11 @@ async def fetch(
                 # as complete as it is ever going to get.
                 for product in pending.take_remaining():
                     yield product
-    except (Exception, asyncio.CancelledError) as e:
-        # Cancellation is turned into an abort rather than passed along,
-        # because Ctrl-C reaches a harvest as a cancellation and the hours of
-        # downloading it is interrupting are worth handing back. fetch() is
-        # only ever consumed as a whole operation, never as part of a task
-        # group or a timeout that would need the cancellation to propagate.
+    except Exception as e:
+        # Cancellation is deliberately not caught here. It reaches us as a
+        # Ctrl-C, and swallowing it would leave the harvest uncancellable and
+        # cost the caller its KeyboardInterrupt. The products in flight go
+        # with it; the rest of the feed has already been yielded and written.
         raise HarvestAborted(pending.take_remaining(), e) from e
     finally:
         # Requests still in flight when a harvest ends have nothing left to

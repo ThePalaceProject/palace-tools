@@ -33,15 +33,15 @@ def overdrive_args(output_file: Path) -> list[str]:
 
 def harvesting(
     products: list[dict[str, Any]],
-    aborts_with: overdrive.HarvestAborted | None = None,
+    then_raises: BaseException | None = None,
 ) -> Any:
     """Stand in for ``overdrive.fetch``, yielding products then maybe failing."""
 
     async def fetch(*args: Any, **kwargs: Any) -> AsyncIterator[dict[str, Any]]:
         for product in products:
             yield product
-        if aborts_with is not None:
-            raise aborts_with
+        if then_raises is not None:
+            raise then_raises
 
     return fetch
 
@@ -68,6 +68,27 @@ class TestDownloadOverdrive:
         runner.invoke(app, overdrive_args(output_file))
 
         assert output_file.read_text() == json.dumps(PRODUCTS, indent=4)
+
+    def test_an_interrupt_leaves_a_readable_feed_and_a_signal_exit_code(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Ctrl-C isn't a failure and shouldn't be reported as one.
+
+        The harvest passes the cancellation along, so ``asyncio.run`` hands it
+        back as ``KeyboardInterrupt``. Everything yielded before it is already
+        written and the array is closed on the way out, so the file parses.
+        """
+        monkeypatch.setattr(
+            overdrive, "fetch", harvesting(PRODUCTS, KeyboardInterrupt())
+        )
+        output_file = tmp_path / "feed.json"
+
+        result = runner.invoke(app, overdrive_args(output_file))
+
+        # 128 + SIGINT, so a caller can tell an interrupt from a failure.
+        assert result.exit_code == 130
+        assert "interrupted" in result.output.lower()
+        assert json.loads(output_file.read_text()) == PRODUCTS
 
     def test_writes_the_partial_feed_when_the_harvest_is_aborted(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

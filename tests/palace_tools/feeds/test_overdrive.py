@@ -666,39 +666,50 @@ class TestPartialHarvest:
         assert "KeyError" in str(aborted)
         assert len(yielded) + len(aborted.products) == 10
 
-    async def test_an_interrupted_harvest_keeps_what_it_had(self) -> None:
-        """Ctrl-C hours into a harvest shouldn't throw the hours away.
+    async def test_an_interrupt_is_passed_along_not_converted(self) -> None:
+        """Ctrl-C stays a Ctrl-C, and costs only the products in flight.
 
         ``asyncio.run`` turns a Ctrl-C into a cancellation of the coroutine it
-        is running, which is what this does to it by hand.
+        is running, which is what this does to it by hand. Converting it would
+        leave the harvest uncancellable and cost the caller the
+        ``KeyboardInterrupt`` that ``asyncio.run`` raises in its place, so it
+        is passed along. Everything handed over before it stays handed over.
         """
-        fake = FakeFeed(item_count=10, page_size=5)
-        metadata_served = asyncio.Event()
+        fake = FakeFeed(item_count=100, page_size=5)
+        # Hangs the harvest once a few products are through, so that it cannot
+        # run to completion before the interrupt lands.
+        wedged = asyncio.Event()
+        metadata_served = 0
 
-        def note_metadata(request: httpx.Request) -> httpx.Response:
+        async def wedge_after_a_few(request: httpx.Request) -> httpx.Response:
+            nonlocal metadata_served
             response = fake.respond(request)
             if request.url.path.endswith("/metadata"):
-                metadata_served.set()
+                metadata_served += 1
+                if metadata_served > 3:
+                    await wedged.wait()  # never set; released by the cancel
             return response
 
         yielded: list[dict[str, Any]] = []
         async with respx.mock(assert_all_called=False) as router:
             router.post(overdrive.TOKEN_ENDPOINT).mock(side_effect=fake.issue_token)
-            router.get(host=API_HOST).mock(side_effect=note_metadata)
+            router.get(host=API_HOST).mock(side_effect=wedge_after_a_few)
 
             harvesting = asyncio.create_task(fetch_feed(yielded))
-            # Interrupt once the pages are in and metadata is being fetched.
-            await metadata_served.wait()
+
+            async def until_some_are_through() -> None:
+                while len(yielded) < 3:
+                    await asyncio.sleep(0)
+
+            await asyncio.wait_for(until_some_are_through(), timeout=5)
             harvesting.cancel()
 
-            with pytest.raises(overdrive.HarvestAborted) as exc_info:
+            # Not HarvestAborted: the cancellation reaches the caller intact.
+            with pytest.raises(asyncio.CancelledError):
                 await harvesting
 
-        aborted = exc_info.value
-        assert str(aborted) == "Harvest interrupted."
-        # Every product the pages listed, most still waiting on metadata.
-        assert len(yielded) + len(aborted.products) == 10
-        assert aborted.products
+        # The products in flight went with the interrupt; the rest didn't.
+        assert 3 <= len(yielded) < 100
 
     async def test_a_harvest_that_finishes_does_not_raise(self) -> None:
         """The abort handling shouldn't fire on the way out of a good harvest."""

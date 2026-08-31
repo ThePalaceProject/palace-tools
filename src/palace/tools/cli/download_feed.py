@@ -153,6 +153,16 @@ def download_overdrive(
                 f"Wrote {writer.count} partially harvested products to {output_file}."
             )
             raise typer.Exit(code=-1)
+        except KeyboardInterrupt:
+            # asyncio.run cancels the harvest and hands the Ctrl-C back as
+            # this. The products still in flight go with it -- everything
+            # before them is already written, and the array is closed on the
+            # way out, so the file is left readable.
+            print("\nHarvest interrupted.")
+            print(
+                f"Wrote {writer.count} partially harvested products to {output_file}."
+            )
+            raise typer.Exit(code=130)
 
 
 @app.command("overdrive-url")
