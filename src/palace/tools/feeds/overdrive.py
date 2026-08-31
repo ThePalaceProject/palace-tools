@@ -252,6 +252,17 @@ def make_request(
     pending_requests.append(task)
 
 
+def requests_per_product(fetch_metadata: bool, fetch_availability: bool) -> int:
+    """How many requests follow each product a feed page lists.
+
+    Metadata is one request; availability is two, v1 and v2. Kept next to the
+    ``process_request`` branch that enqueues them, because a count that
+    disagrees with the URLs actually made either strands products until the
+    end of the harvest or releases them before their last response lands.
+    """
+    return (1 if fetch_metadata else 0) + (2 if fetch_availability else 0)
+
+
 class PendingProducts:
     """Products that are still waiting on requests, and the ones that aren't.
 
@@ -384,9 +395,8 @@ async def fetch(
     Raises ``HarvestAborted`` if the harvest ends early, carrying the products
     that were still waiting on a request and so were never yielded.
     """
-    pending = PendingProducts(
-        (1 if fetch_metadata else 0) + (2 if fetch_availability else 0)
-    )
+    per_product = requests_per_product(fetch_metadata, fetch_availability)
+    pending = PendingProducts(per_product)
     pending_requests: list[asyncio.Task[Response]] = []
 
     try:
@@ -415,11 +425,7 @@ async def fetch(
             items_per_page = first_page_data["limit"]
             pages = math.ceil(items / items_per_page)
 
-            fetches = (
-                pages
-                + (items if fetch_metadata else 0)
-                + (items * 2 if fetch_availability else 0)
-            )
+            fetches = pages + items * per_product
             with Progress(
                 SpinnerColumn(), *Progress.get_default_columns(), MofNCompleteColumn()
             ) as progress:
