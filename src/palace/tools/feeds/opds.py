@@ -12,6 +12,7 @@ from typing import Any, NamedTuple, TextIO
 import httpx
 from rich.progress import MofNCompleteColumn, Progress, SpinnerColumn
 
+from palace.tools.constants import DEFAULT_USER_AGENT
 from palace.tools.feeds.retry import request_with_retry_sync
 
 
@@ -202,7 +203,7 @@ def fetch(
     client.headers.update(
         {
             "Accept": "application/opds+json, application/json;q=0.9, */*;q=0.1",
-            "User-Agent": "Palace",
+            "User-Agent": DEFAULT_USER_AGENT,
         }
     )
     client.timeout = httpx.Timeout(30.0)

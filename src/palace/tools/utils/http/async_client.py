@@ -4,7 +4,8 @@ import sys
 from contextlib import nullcontext
 from typing import Any
 
-from httpx import AsyncClient, Response
+from httpx import AsyncClient, Headers, Response
+from httpx._types import HeaderTypes
 
 from palace.tools.constants import DEFAULT_USER_AGENT
 
@@ -15,19 +16,23 @@ else:
 
 
 class HTTPXAsyncClient(AsyncClient):
-    def __init__(self, user_agent: str = DEFAULT_USER_AGENT, **kwargs: Any) -> None:
-        super().__init__(**kwargs)
+    """An ``AsyncClient`` that identifies itself as Palace on every request."""
+
+    def __init__(
+        self,
+        user_agent: str = DEFAULT_USER_AGENT,
+        *,
+        headers: HeaderTypes | None = None,
+        **kwargs: Any,
+    ) -> None:
+        # The User-Agent is a client default rather than something added by an
+        # overridden request(), because httpx merges client headers into every
+        # request it builds. That covers stream() and send() too, neither of
+        # which goes through request().
+        client_headers = Headers({"User-Agent": user_agent})
+        client_headers.update(headers)
+        super().__init__(headers=client_headers, **kwargs)
         self.user_agent = user_agent
-
-    async def request(self, method: str, url: str, *, headers: dict[str, str] | None = None, **kwargs: Any) -> Response:  # type: ignore[override]
-        headers = {"User-Agent": self.user_agent} | (headers or {})
-        return await super().request(method, url, headers=headers, **kwargs)
-
-    async def post(self, *args: Any, **kwargs: Any) -> Response:
-        return await self.request("POST", *args, **kwargs)
-
-    async def get(self, *args: Any, **kwargs: Any) -> Response:
-        return await self.request("GET", *args, **kwargs)
 
     @classmethod
     def with_existing_client(
