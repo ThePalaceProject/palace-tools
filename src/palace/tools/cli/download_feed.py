@@ -1,6 +1,10 @@
+from __future__ import annotations
+
 import asyncio
 import json
+import textwrap
 from pathlib import Path
+from typing import Any, TextIO
 from xml.dom import minidom
 
 import typer
@@ -10,6 +14,41 @@ from palace.tools.feeds import axis, odl, opds, opds1, overdrive
 from palace.tools.utils.typer import run_typer_app_as_main
 
 app = typer.Typer()
+
+
+class ProductWriter:
+    """Writes products into a JSON array one at a time.
+
+    The file is what ``json.dumps(products, indent=4)`` would have produced,
+    written without ever holding the whole list, so that a harvest of a large
+    collection doesn't have to fit in memory to be saved.
+    """
+
+    def __init__(self, output_file: Path) -> None:
+        self._output_file = output_file
+        self._file: TextIO | None = None
+        self.count = 0
+
+    def __enter__(self) -> ProductWriter:
+        self._file = self._output_file.open("w")
+        self._file.write("[")
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        if self._file is None:
+            return
+        # An array is only valid once it's closed, and an aborted harvest
+        # leaves a file behind that still has to be readable.
+        self._file.write("\n]" if self.count else "]")
+        self._file.close()
+        self._file = None
+
+    def write(self, product: dict[str, Any]) -> None:
+        if self._file is None:
+            raise RuntimeError("ProductWriter can only be written to while open.")
+        self._file.write(",\n" if self.count else "\n")
+        self._file.write(textwrap.indent(json.dumps(product, indent=4), "    "))
+        self.count += 1
 
 
 @app.command("axis")
@@ -84,8 +123,9 @@ def download_overdrive(
 ) -> None:
     """Download Overdrive feed."""
     base_url = overdrive.QA_BASE_URL if qa_endpoint else overdrive.PROD_BASE_URL
-    products = asyncio.run(
-        overdrive.fetch(
+
+    async def harvest(writer: ProductWriter) -> None:
+        async for product in overdrive.fetch(
             base_url,
             client_key,
             client_secret,
@@ -96,11 +136,33 @@ def download_overdrive(
             connections,
             skip_not_found,
             use_consortial_plus_advantage_feed,
-        )
-    )
+        ):
+            writer.write(product)
 
-    with output_file.open("w") as file:
-        file.write(json.dumps(products, indent=4))
+    with ProductWriter(output_file) as writer:
+        try:
+            asyncio.run(harvest(writer))
+        except overdrive.HarvestAborted as e:
+            # A harvest takes hours. Everything it finished is already on
+            # disk, so all that's left is the products it was still waiting
+            # on when it died.
+            print(e)
+            for product in e.products:
+                writer.write(product)
+            print(
+                f"Wrote {writer.count} partially harvested products to {output_file}."
+            )
+            raise typer.Exit(code=-1)
+        except KeyboardInterrupt:
+            # asyncio.run cancels the harvest and hands the Ctrl-C back as
+            # this. The products still in flight go with it -- everything
+            # before them is already written, and the array is closed on the
+            # way out, so the file is left readable.
+            print("\nHarvest interrupted.")
+            print(
+                f"Wrote {writer.count} partially harvested products to {output_file}."
+            )
+            raise typer.Exit(code=130)
 
 
 @app.command("overdrive-url")
@@ -112,7 +174,11 @@ def download_overdrive_url(
     url: str = typer.Argument(..., help="URL to fetch"),
 ) -> None:
     """Output Overdrive feed data by URL (metadata, availability, etc)."""
-    results = asyncio.run(overdrive.fetch_url(client_key, client_secret, url))
+    try:
+        results = asyncio.run(overdrive.fetch_url(client_key, client_secret, url))
+    except overdrive.OverdriveError as e:
+        print(e)
+        raise typer.Exit(code=-1)
 
     print(json.dumps(results, indent=4))
 
