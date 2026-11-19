@@ -1,6 +1,7 @@
 import csv
 import traceback
 from collections.abc import Mapping
+from enum import StrEnum
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any
@@ -8,7 +9,7 @@ from typing import Any
 import requests
 import typer
 from pydantic import BaseModel, PositiveInt, ValidationError
-from requests import Response
+from requests import RequestException, Response
 
 from palace.tools.utils.typer import run_typer_app_as_main
 
@@ -46,18 +47,74 @@ EXAMPLE_CATEGORIES: tuple[str, ...] = (
     "Science Fiction",
 )
 
-# CSV columns holding a comma-separated list rather than a single value.
-LIST_COLUMNS: tuple[str, ...] = (
+REQUIRED_COLUMNS: tuple[str, ...] = (
+    "name",
+    "short_name",
+    "website_url",
+    "patron_support_email",
     "large_collection_languages",
     "small_collection_languages",
     "enabled_entry_points",
+    "facets_default_order",
+)
+
+OPTIONAL_COLUMNS: tuple[str, ...] = (
+    "featured_lane_size",
+    "facets_default_available",
     "filtered_audiences",
     "filtered_categories",
 )
 
+# Columns the tool reads past without complaint. They are not sent anywhere;
+# they are here so a spreadsheet that also carries notes for human readers
+# doesn't have to be stripped down before it can be imported.
+IGNORED_COLUMNS: tuple[str, ...] = ("description",)
+
+# Required columns holding a comma-separated list. A blank cell in one of these
+# means an empty list, which the circulation manager accepts.
+REQUIRED_LIST_COLUMNS: tuple[str, ...] = (
+    "large_collection_languages",
+    "small_collection_languages",
+    "enabled_entry_points",
+)
+
+# Optional columns holding a comma-separated list. A blank cell in one of these
+# is left out of the upload, so the circulation manager's default applies.
+OPTIONAL_LIST_COLUMNS: tuple[str, ...] = (
+    "filtered_audiences",
+    "filtered_categories",
+)
+
+KNOWN_COLUMNS: frozenset[str] = frozenset(
+    REQUIRED_COLUMNS + OPTIONAL_COLUMNS + IGNORED_COLUMNS
+)
+
+# A stalled circulation manager shouldn't hang the run forever. Creating a
+# library's default lanes takes a few seconds, so the read timeout is generous.
+CONNECT_TIMEOUT_SECONDS = 10.0
+DEFAULT_READ_TIMEOUT_SECONDS = 300.0
+
+
+class CsvFileError(Exception):
+    """The CSV file as a whole could not be used."""
+
 
 class CsvRowError(Exception):
     """A row in the CSV could not be turned into a library."""
+
+
+class UploadError(Exception):
+    """A library could not be sent to the circulation manager at all."""
+
+
+class UploadResult(StrEnum):
+    """What the circulation manager did with one library."""
+
+    CREATED = "created"
+    # The short name was already taken, so the row was left alone. Expected
+    # when a file is re-run to add a few libraries to a set already imported.
+    SKIPPED = "skipped"
+    FAILED = "failed"
 
 
 class LibraryImportInfo(BaseModel):
@@ -91,6 +148,7 @@ def upload_library_to_palace(
     password: str,
     library: LibraryImportInfo,
     verbose: bool = False,
+    read_timeout: float = DEFAULT_READ_TIMEOUT_SECONDS,
 ) -> Response:
     """Upload CSV rows as JSON to Palace import-libraries-from-csv endpoint."""
     import_url = f"{base_url.rstrip('/')}/admin/libraries/import"
@@ -101,25 +159,75 @@ def upload_library_to_palace(
     # I'm sending these one by one because the import operation currently takes several seconds for each
     # library due to the database intensive default lane creation operation. Since there can be over a hundred
     # libraries on a CM, it's better to import the libraries one at a time.
-    response = requests.post(
-        url=import_url,
-        json={"libraries": [library.model_dump(exclude_none=True)]},
-        auth=(username, password),
-        headers={"Content-Type": "application/json"},
-    )
+    try:
+        response = requests.post(
+            url=import_url,
+            json={"libraries": [library.model_dump(exclude_none=True)]},
+            auth=(username, password),
+            headers={"Content-Type": "application/json"},
+            timeout=(CONNECT_TIMEOUT_SECONDS, read_timeout),
+        )
+    except RequestException as e:
+        raise UploadError(f"{library.name}: could not reach {import_url}: {e}")
     return response
 
 
-REQUIRED_COLUMNS: tuple[str, ...] = (
-    "name",
-    "short_name",
-    "website_url",
-    "patron_support_email",
-    "large_collection_languages",
-    "small_collection_languages",
-    "enabled_entry_points",
-    "facets_default_order",
-)
+def _report_upload(library: LibraryImportInfo, response: Response) -> UploadResult:
+    """Say what the circulation manager did with one library.
+
+    The endpoint answers 207 when the library in the payload was rejected, and
+    its body says ``"result": "success"`` either way, so the status code on its
+    own cannot be trusted; the ``errors``, ``skipped`` and ``created`` lists are
+    what count.
+
+    Raises UploadError when the request failed outright, which usually means
+    every remaining row would fail the same way.
+    """
+    if response.status_code not in (200, 201, 207):
+        raise UploadError(
+            f"{library.name}: the circulation manager answered "
+            f"{response.status_code}. {response.text}"
+        )
+
+    try:
+        body = response.json()
+    except ValueError:
+        raise UploadError(
+            f"{library.name}: expected JSON from the circulation manager, got "
+            f"{response.text[:200]!r}"
+        )
+    if not isinstance(body, dict):
+        raise UploadError(
+            f"{library.name}: expected a JSON object from the circulation "
+            f"manager, got {body!r}"
+        )
+
+    errors = body.get("errors") or []
+    if errors:
+        for error in errors:
+            detail = error.get("error") if isinstance(error, dict) else error
+            typer.echo(f"❌ {library.name}: {detail}", err=True)
+        return UploadResult.FAILED
+
+    if body.get("skipped"):
+        # The endpoint leaves an existing library exactly as it is, so none of
+        # the settings in this row were applied to it.
+        typer.echo(
+            f"⏭️  {library.name}: a library with the short name "
+            f"'{library.short_name}' already exists. It was left unchanged."
+        )
+        return UploadResult.SKIPPED
+
+    if body.get("created"):
+        typer.echo(f"✅ Created library {library.name}.")
+        return UploadResult.CREATED
+
+    typer.echo(
+        f"❌ {library.name}: the circulation manager reported neither a created "
+        f"nor a skipped library. {response.text[:200]}",
+        err=True,
+    )
+    return UploadResult.FAILED
 
 
 def _build_help() -> str:
@@ -128,6 +236,9 @@ def _build_help() -> str:
     return "\n\n".join(
         [
             "Import libraries from a CSV file into a Palace circulation manager.",
+            "Only libraries that do not exist yet are created. A row whose"
+            " short_name is already taken is left exactly as it is, and none of"
+            " the settings in that row are applied to it.",
             "Required columns: " + ", ".join(REQUIRED_COLUMNS) + ".",
             "Optional columns, under 'Lanes & Filters' and 'Content Filtering' in"
             " the admin interface. Leaving one out, or leaving its cell blank,"
@@ -147,7 +258,15 @@ def _build_help() -> str:
             " Content Filtering in the admin interface, and the circulation"
             " manager checks every value in this column against it.",
             "Columns holding a list (languages, entry points, audiences and"
-            ' categories) are comma-separated, for example "Adult,Young Adult".',
+            ' categories) are comma-separated, for example "Adult,Young Adult".'
+            " Leaving a required list column blank means an empty list.",
+            "A '" + "', '".join(IGNORED_COLUMNS) + "' column is allowed and"
+            " ignored. Any other unrecognised column is an error, so that a"
+            " misspelled heading is not quietly passed over.",
+            "Every row is checked before anything is uploaded. The circulation"
+            " manager checks some values itself, though, so a row it rejects can"
+            " still stop a run part of the way through. The summary at the end"
+            " says what was created.",
         ]
     )
 
@@ -171,6 +290,11 @@ def import_libraries(
         dir_okay=False,
         readable=True,
     ),
+    read_timeout: float = typer.Option(
+        DEFAULT_READ_TIMEOUT_SECONDS,
+        "--timeout",
+        help="Seconds to wait for the circulation manager to answer about one library.",
+    ),
     verbose: bool = typer.Option(
         False, "--verbose", "-v", help="Enable verbose output"
     ),
@@ -181,8 +305,13 @@ def import_libraries(
         typer.echo(f"Palace Base URL: {palace_base_url}")
 
     try:
-        _import_csv_async(username, password, palace_base_url, csv_file, verbose)
-
+        _import_csv(
+            username, password, palace_base_url, csv_file, verbose, read_timeout
+        )
+    except typer.Exit:
+        # typer.Exit subclasses RuntimeError, so without this it would be caught
+        # below and reported as an unexpected failure.
+        raise
     except Exception as e:
         typer.echo(f"Error importing CSV file: {e}", err=True)
         if verbose:
@@ -190,63 +319,94 @@ def import_libraries(
         raise typer.Exit(1)
 
 
-def _import_csv_async(
-    username: str, password: str, palace_base_url: str, csv_file: Path, verbose: bool
+def _import_csv(
+    username: str,
+    password: str,
+    palace_base_url: str,
+    csv_file: Path,
+    verbose: bool,
+    read_timeout: float = DEFAULT_READ_TIMEOUT_SECONDS,
 ) -> None:
-    """Async implementation of CSV import."""
-    # Step 1: Parse CSV file
+    """Read the CSV and send each library it describes to the circulation manager."""
     typer.echo("Parsing CSV file...")
 
-    libraries = _parse_csv_file(csv_file, verbose)
+    libraries, columns = _parse_csv_file(csv_file)
 
     typer.echo(f"Successfully parsed {len(libraries)} rows from CSV")
     if verbose:
-        if libraries:
-            typer.echo(f"Columns: {list(libraries[0].__dict__.keys())}")
+        typer.echo(f"Columns: {', '.join(columns)}")
 
-    for library in libraries:
-        response = upload_library_to_palace(
-            palace_base_url, username, password, library, verbose
-        )
-
-        if response.status_code in [200, 201, 207]:
-            typer.echo(
-                f"✅ Successfully imported library {library.name} from CSV file!"
+    counts = {result: 0 for result in UploadResult}
+    for position, library in enumerate(libraries):
+        try:
+            response = upload_library_to_palace(
+                palace_base_url, username, password, library, verbose, read_timeout
             )
-            if verbose and response.text:
-                typer.echo(f"Response: {response.text}")
-        else:
-            typer.echo(f"❌ Failed to import libraries. Status: {response.status_code}")
-            typer.echo(f"Error: {response.text}")
+            result = _report_upload(library, response)
+        except UploadError as e:
+            # Something is wrong with the request or the server rather than with
+            # this one row, so stop rather than failing the same way for every
+            # library that is left.
+            typer.echo(f"❌ {e}", err=True)
+            _echo_summary(counts, remaining=len(libraries) - position)
             raise typer.Exit(1)
 
+        counts[result] += 1
+        if verbose and response.text:
+            typer.echo(f"Response: {response.text}")
 
-def _convert_string_value_to_list(d: dict[str, Any], field_name: str) -> None:
-    """Split a comma-separated cell into a list, dropping blank entries.
+    _echo_summary(counts, remaining=0)
+    if counts[UploadResult.FAILED]:
+        raise typer.Exit(1)
 
-    A column that is missing or blank is left as None, so that a required field
-    is reported as missing and an optional one falls back to the circulation
-    manager's default.
-    """
-    raw = d.get(field_name)
-    if raw is None:
-        d[field_name] = None
-        return
-    d[field_name] = [item.strip() for item in raw.split(",") if item.strip()] or None
+
+def _echo_summary(counts: Mapping[UploadResult, int], remaining: int) -> None:
+    """Say what actually happened, including anything left undone."""
+    created = counts[UploadResult.CREATED]
+    typer.echo(f"Created {created} librar{'y' if created == 1 else 'ies'}.")
+
+    skipped = counts[UploadResult.SKIPPED]
+    if skipped:
+        typer.echo(
+            f"{skipped} already existed and were left unchanged, so the settings "
+            f"in those rows were not applied."
+        )
+
+    failed = counts[UploadResult.FAILED]
+    if failed:
+        typer.echo(
+            f"{failed} refused by the circulation manager, listed above.", err=True
+        )
+
+    if remaining:
+        typer.echo(
+            f"Stopped with {remaining} librar{'y' if remaining == 1 else 'ies'} "
+            f"left to try. Libraries already created stay created; running the "
+            f"same file again leaves them alone.",
+            err=True,
+        )
+
+
+def _split_list_cell(value: str | None) -> list[str]:
+    """Split a comma-separated cell into a list, dropping blank entries."""
+    if value is None:
+        return []
+    return [item.strip() for item in value.split(",") if item.strip()]
 
 
 def _validate_featured_lane_size(value: str | None) -> None:
     """Reject a featured lane size that isn't a whole number above zero."""
     if value is None:
         return
-    try:
-        size = int(value)
-    except ValueError:
+    # Not int(): that also accepts "3_5" (as 35) and non-ASCII digits, so a typo
+    # would either change the number quietly or fail later with a raw pydantic
+    # error instead of this message.
+    if not (value.isascii() and value.isdigit()):
         raise CsvRowError(
             f"'featured_lane_size' must be a whole number, not {value!r}."
         )
-    if size < 1:
-        raise CsvRowError(f"'featured_lane_size' must be greater than 0, not {size}.")
+    if int(value) < 1:
+        raise CsvRowError(f"'featured_lane_size' must be greater than 0, not {value}.")
 
 
 def _normalize_availability(value: str | None) -> str | None:
@@ -276,22 +436,36 @@ def _validate_audiences(values: list[str] | None) -> None:
 
 def _row_to_library(row: dict[str, Any]) -> LibraryImportInfo:
     """Clean up one CSV row and turn it into a library, or raise CsvRowError."""
-    # A row with more cells than headers puts the surplus under a None key, and
-    # a short row leaves missing cells as None. Drop both, then blank out any
-    # cell that holds only whitespace.
+    # A row with more cells than headers puts the surplus under a None key, and a
+    # short row leaves missing cells as None. Drop both, then blank out any cell
+    # that holds only whitespace. A column that isn't here at all stays absent,
+    # so a required one is reported as missing rather than as the wrong type.
     cleaned_row: dict[str, Any] = {
         key: (value.strip() or None)
         for key, value in row.items()
         if key is not None and isinstance(value, str)
     }
 
-    for column in LIST_COLUMNS:
-        _convert_string_value_to_list(cleaned_row, column)
+    # A blank required list cell means an empty list, which the circulation
+    # manager accepts. A blank optional one is left out, so its default applies.
+    for column in REQUIRED_LIST_COLUMNS:
+        if column in cleaned_row:
+            cleaned_row[column] = _split_list_cell(cleaned_row[column])
+    for column in OPTIONAL_LIST_COLUMNS:
+        if column in cleaned_row:
+            values = _split_list_cell(cleaned_row[column])
+            if values:
+                cleaned_row[column] = values
+            else:
+                del cleaned_row[column]
 
     _validate_featured_lane_size(cleaned_row.get("featured_lane_size"))
-    cleaned_row["facets_default_available"] = _normalize_availability(
-        cleaned_row.get("facets_default_available")
-    )
+    if "facets_default_available" in cleaned_row:
+        normalized = _normalize_availability(cleaned_row["facets_default_available"])
+        if normalized is None:
+            del cleaned_row["facets_default_available"]
+        else:
+            cleaned_row["facets_default_available"] = normalized
     _validate_audiences(cleaned_row.get("filtered_audiences"))
 
     # Categories are checked by the circulation manager, which compares them
@@ -304,17 +478,52 @@ def _row_to_library(row: dict[str, Any]) -> LibraryImportInfo:
         raise CsvRowError(str(e))
 
 
-def _parse_csv_file(csv_file: Path, verbose: bool = False) -> list[LibraryImportInfo]:
-    """Parse CSV file and return the libraries it describes.
+def _check_columns(fieldnames: list[str]) -> None:
+    """Make sure the header names a usable set of columns."""
+    duplicates = sorted({name for name in fieldnames if fieldnames.count(name) > 1})
+    if duplicates:
+        raise CsvFileError(
+            f"These columns appear more than once: {', '.join(duplicates)}. Only "
+            f"the last of each would be read, so the rest would be lost."
+        )
 
-    Every row is checked before anything is uploaded, so a bad value late in the
-    file doesn't leave a half-finished import behind.
+    missing = [name for name in REQUIRED_COLUMNS if name not in fieldnames]
+    if missing:
+        raise CsvFileError(f"These required columns are missing: {', '.join(missing)}.")
+
+    unknown = sorted(name for name in fieldnames if name not in KNOWN_COLUMNS)
+    if unknown:
+        known = ", ".join(sorted(KNOWN_COLUMNS))
+        raise CsvFileError(
+            f"These columns are not recognised: {', '.join(unknown)}. The columns "
+            f"this tool reads are: {known}."
+        )
+
+
+def _parse_csv_file(csv_file: Path) -> tuple[list[LibraryImportInfo], list[str]]:
+    """Read the CSV and return the libraries it describes, with its columns.
+
+    Every row is checked before any of them is uploaded, so a value this tool
+    can reject doesn't leave a half-finished import behind. The circulation
+    manager checks some values itself, so a row it rejects can still stop a run
+    part of the way through.
     """
     rows: list[LibraryImportInfo] = []
     errors: list[str] = []
 
-    with csv_file.open("r", newline="", encoding="utf-8") as file:
+    # utf-8-sig, not utf-8: Excel and Google Sheets both write a byte order mark,
+    # which would otherwise become part of the first column's name and make every
+    # row fail for a missing 'name'.
+    with csv_file.open("r", newline="", encoding="utf-8-sig") as file:
         reader = csv.DictReader(file)
+
+        if reader.fieldnames is None:
+            raise CsvFileError(f"{csv_file} is empty: it has no header row.")
+
+        # Headers are no more immune to stray spaces than the cells beneath them.
+        reader.fieldnames = [name.strip() for name in reader.fieldnames]
+        columns = list(reader.fieldnames)
+        _check_columns(columns)
 
         for row in reader:
             try:
@@ -326,12 +535,17 @@ def _parse_csv_file(csv_file: Path, verbose: bool = False) -> list[LibraryImport
     if errors:
         for error in errors:
             typer.echo(f"❌ {error}", err=True)
-        raise CsvRowError(
+        raise CsvFileError(
             f"{len(errors)} of {len(errors) + len(rows)} rows are invalid. "
             f"Nothing was imported."
         )
 
-    return rows
+    if not rows:
+        raise CsvFileError(
+            f"{csv_file} has a header but no libraries under it. Nothing to import."
+        )
+
+    return rows, columns
 
 
 def main() -> None:
