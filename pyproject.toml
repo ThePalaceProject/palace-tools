@@ -28,6 +28,7 @@ dependencies = [
     "palace-opds>=41.0.0,<50",
     "pydantic>=2.11.7,<3",
     "python-vlc>=3.0.20123,<4",
+    "requests>=2.32.3,<3",
     "rich>=15.0.0,<16",
     "textual>=8.0.0,<9",
     "typer>=0.24.1,<0.26",
